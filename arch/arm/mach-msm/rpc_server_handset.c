@@ -198,6 +198,7 @@ static const uint32_t hs_key_map[] = {
 enum {
 	NO_DEVICE	= 0,
 	MSM_HEADSET	= 1,
+	MSM_HEADSET_NO_MIC	= 2,
 };
 /* Add newer versions at the top of array */
 static const unsigned int rpc_vers[] = {
@@ -225,6 +226,17 @@ struct msm_handset {
 
 static struct msm_rpc_client *rpc_client;
 static struct msm_handset *hs;
+
+#ifdef CONFIG_MSM_IGNORE_END_KEY
+/* Ignore end key,and change it to power key. lijh@thunderst.com */
+static int ts_end_key_ignore=0;
+#endif
+
+#ifdef CONFIG_MSM_FIX_MEDIA_KEY
+static unsigned hs_flag=0;
+static unsigned hs_mk_ignore=0;
+static unsigned long tjiffies=0;
+#endif
 
 static int hs_find_key(uint32_t hscode)
 {
@@ -269,6 +281,7 @@ static void update_state(void)
 static void report_hs_key(uint32_t key_code, uint32_t key_parm)
 {
 	int key, temp_key_code;
+	static int headphone_flag = 0;
 
 	if (key_code == HS_REL_K)
 		key = hs_find_key(key_parm);
@@ -281,9 +294,68 @@ static void report_hs_key(uint32_t key_code, uint32_t key_parm)
 		key_code = key_parm;
 
 	switch (key) {
+ #ifdef CONFIG_MSM_IGNORE_END_KEY
+        case KEY_POWER:
+                if (key_code != HS_REL_K)
+                {
+                        ts_end_key_ignore=1;
+                }
+                input_report_key(hs->ipdev, key, (key_code != HS_REL_K));
+                break;
+        case KEY_END:
+                if (key_code==HS_REL_K)
+                {
+                        if(ts_end_key_ignore==0)
+                        {
+                                input_report_key(hs->ipdev, KEY_POWER, 1);
+                                input_report_key(hs->ipdev, KEY_POWER, 0);
+                        }
+                        ts_end_key_ignore=0;
+                }
+                break;
+#else
+
 	case KEY_POWER:
 	case KEY_END:
+#endif
+	#ifndef CONFIG_MSM_IGNORE_MEDIA_KEY
 	case KEY_MEDIA:
+               #ifdef CONFIG_MSM_FIX_MEDIA_KEY
+                /* Here ignore hs input hardware signal issue,which will report a media key event.*/
+				if(headphone_flag == 2){  //if headset is removed,ignore all key event
+					break;
+				}
+                if(hs_mk_ignore){
+                        hs_mk_ignore=0;
+                        break;
+                }
+                if(hs_flag){
+                        if (jiffies_to_msecs(jiffies-tjiffies) >2000){
+                                hs_mk_ignore=0;
+                        }
+                        else{
+
+                                hs_mk_ignore=1;
+                        }
+                }
+                else{
+                        hs_mk_ignore=1;
+                }
+                if(hs_mk_ignore)
+                {
+	 				if(headphone_flag == 1)
+					{
+						headphone_flag = 0;
+						if(key_parm == 0)
+						{
+							input_report_switch(hs->ipdev, SW_MICROPHONE_INSERT,0);
+							switch_set_state(&hs->sdev, MSM_HEADSET_NO_MIC);
+						}
+					}
+                    break;
+                }
+                #endif
+        #endif
 	case KEY_VOLUMEUP:
 	case KEY_VOLUMEDOWN:
 		input_report_key(hs->ipdev, key, (key_code != HS_REL_K));
@@ -295,12 +367,32 @@ static void report_hs_key(uint32_t key_code, uint32_t key_parm)
 		input_report_switch(hs->ipdev, SW_MICROPHONE_INSERT,
 							hs->mic_on);
 		update_state();
+        #ifdef CONFIG_MSM_FIX_MEDIA_KEY
+                hs_flag=(key_code != HS_REL_K);
+                if(hs_flag)
+                {
+	 					headphone_flag = 1;
+                        tjiffies=jiffies;
+                }
+				else
+				{
+						headphone_flag = 2;
+				}
+        #endif
 		break;
 
 	case SW_HEADPHONE_INSERT:
 		hs->hs_on = (key_code != HS_REL_K) ? 1 : 0;
 		input_report_switch(hs->ipdev, key, hs->hs_on);
 		update_state();
+        #ifdef CONFIG_MSM_FIX_MEDIA_KEY
+                hs_flag=(key_code != HS_REL_K);
+                if(hs_flag)
+                {
+                        tjiffies=jiffies;
+                }
+        #endif
+
 		break;
 	case SW_MICROPHONE_INSERT:
 		hs->mic_on = (key_code != HS_REL_K) ? 1 : 0;
@@ -595,6 +687,7 @@ static ssize_t msm_headset_print_name(struct switch_dev *sdev, char *buf)
 	case NO_DEVICE:
 		return sprintf(buf, "No Device\n");
 	case MSM_HEADSET:
+	case MSM_HEADSET_NO_MIC:
 		return sprintf(buf, "Headset\n");
 	}
 	return -EINVAL;

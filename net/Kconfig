@@ -100,6 +100,13 @@ config NETWORK_SECMARK
 	  to nfmark, but designated for security purposes.
 	  If you are unsure how to answer this question, answer N.
 
+config BCM_4330
+	depends on (MACH_MSM7X30_COCKTAIL)
+	bool "BCM4330 NET"
+	default n
+	---help---
+	  Should be check before loader the driver of  the bcm4330 IC.
+
 menuconfig NETFILTER
 	bool "Network packet filtering framework (Netfilter)"
 	---help---

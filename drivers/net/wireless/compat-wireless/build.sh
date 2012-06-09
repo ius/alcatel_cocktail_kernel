@@ -1,0 +1,1 @@
+make ARCH=arm CROSS_COMPILE=/home/terryc/wifidirect/android-2.3.3_r1/prebuilt/linux-x86/toolchain/arm-eabi-4.4.0/bin/arm-eabi- LINUXDIR=/home/terryc/wifidirect/android-2.3.3_r1/android-msm-2.6.35.wfd/msm KLIB=/home/terryc/wifidirect/android-2.3.3_r1/android-msm-2.6.35.wfd/msm KLIB_BUILD=/home/terryc/wifidirect/android-2.3.3_r1/android-msm-2.6.35.wfd/msm

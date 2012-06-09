@@ -799,7 +799,7 @@ int bdi_writeback_task(struct bdi_writeback *wb)
 				break;
 		}
 
-		if (dirty_writeback_interval) {
+		if (dirty_writeback_interval && !kthread_should_stop()) {
 			wait_jiffies = msecs_to_jiffies(dirty_writeback_interval * 10);
 			schedule_timeout_interruptible(wait_jiffies);
 		} else {

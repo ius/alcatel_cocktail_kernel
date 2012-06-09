@@ -1,0 +1,101 @@
+#
+# Makefile fragment for Linux 2.6
+# Broadcom DHD Driver
+#
+# Copyright (C) 2008, Broadcom Corporation
+# All Rights Reserved.
+# 
+# THIS SOFTWARE IS OFFERED "AS IS", AND BROADCOM GRANTS NO WARRANTIES OF ANY
+# KIND, EXPRESS OR IMPLIED, BY STATUTE, COMMUNICATION OR OTHERWISE. BROADCOM
+# SPECIFICALLY DISCLAIMS ANY IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS
+# FOR A SPECIFIC PURPOSE OR NONINFRINGEMENT CONCERNING THIS SOFTWARE.
+#
+# $Id: makefile.26,v 1.1.144.1 2008/05/07 22:53:44 Exp $
+
+# bcm4329
+#VPATH:=dhd/sys:shared:bcmsdio/sys:wl/sys:crypto
+DHDCFLAGS = -DLINUX -DBCMDRIVER -DBCMDONGLEHOST -DDHDTHREAD -DBCMWPA2         \
+	-DUNRELEASEDCHIP -Dlinux -DDHD_SDALIGN=64 -DMAX_HDR_READ=64           \
+	-DDHD_FIRSTREAD=64 -DDHD_GPL -DDHD_SCHED -DBDC -DTOE -DDHD_BCMEVENTS  \
+	-DSHOW_EVENTS -DBCMSDIO -DDHD_GPL -DBCMLXSDMMC -DBCMPLATFORM_BUS      \
+	-Wall -Wstrict-prototypes -Werror -DCUSTOMER_HW2      \
+	-DDHD_USE_STATIC_BUF -DMMC_SDIO_ABORT                      \
+
+#DHDCFLAGS += -DCUSTOM_OOB_GPIO_NUM=152
+DHDCFLAGS += -DOEM_ANDROID
+#DHDCFLAGS += -DDHD_DEBUG
+#DHDCFLAGS += -DSDIO_ISR_THREAD
+#DHDCFLAGS += -DSOFTAP
+#DHDCFLAGS += -DOOB_INTR_ONLY
+#DHDCFLAGS += -DHW_OOB
+DHDCFLAGS += -DWLP2P
+#DHDCFLAGS += -DEMBEDDED_PLATFORM
+DHDCFLAGS += -DCONFIG_WIFI_CONTROL_FUNC
+DHDCFLAGS += -DAP -DSTA
+
+#DHDOFILES += sha1.c md5.c
+
+# Nexus One
+obj-$(CONFIG_BCM4329) += bcm4329.o
+bcm4329-objs += $(DHDOFILES)
+
+EXTRA_CFLAGS = $(DHDCFLAGS)
+EXTRA_LDFLAGS += --strip-debug
+obj-$(CONFIG_BCM4329) += bcm4329.o
+
+obj-$(CONFIG_BRCM_USE_STATIC_BUF) += brcm_static_buf.o
+
+bcm4329-objs = \
+	src/dhd/sys/dhd_linux.o \
+	src/shared/linux_osl.o \
+	src/shared/bcmutils.o \
+	src/dhd/sys/dhd_common.o \
+	src/dhd/sys/dhd_custom_gpio.o \
+	src/shared/siutils.o \
+	src/shared/sbutils.o \
+	src/shared/aiutils.o \
+	src/shared/hndpmu.o \
+	src/wl/sys/wl_iw.o \
+	src/wl/sys/wl_cfg80211.o \
+	src/wl/sys/wl_cfgp2p.o \
+	src/shared/bcmwifi.o \
+	src/dhd/sys/dhd_cdc.o \
+	src/dhd/sys/dhd_sdio.o \
+	src/dhd/sys/dhd_linux_sched.o \
+	src/bcmsdio/sys/bcmsdh_sdmmc.o \
+	src/bcmsdio/sys/bcmsdh.o \
+	src/bcmsdio/sys/bcmsdh_linux.o \
+	src/bcmsdio/sys/bcmsdh_sdmmc_linux.o \
+
+SRCROOT = /opt/compat/compat-wireless-2010-12-20/drivers/net/wireless/bcm4329/src
+EXTRA_CFLAGS += \
+	-I$(SRCROOT) \
+	-I$(SRCROOT)/include \
+	-I$(SRCROOT)/shared \
+	-I$(SRCROOT)/dhd/sys \
+	-I$(SRCROOT)/dongle \
+	-I$(SRCROOT)/wl/sys \
+
+clean: 
+	rm -rf *.o *.ko *.mod.c *~ .*.cmd Module.symvers modules.order .tmp_versions	\
+	src/dhd/sys/dhd_linux.o \
+	src/shared/linux_osl.o \
+	src/shared/bcmutils.o \
+	src/dhd/sys/dhd_common.o \
+	src/dhd/sys/dhd_custom_gpio.o \
+	src/shared/siutils.o \
+	src/shared/sbutils.o \
+	src/shared/aiutils.o \
+	src/shared/hndpmu.o \
+	src/wl/sys/wl_iw.o \
+	src/wl/sys/wl_cfg80211.o \
+	src/wl/sys/wl_cfgp2p.o \
+	src/shared/bcmwifi.o \
+	src/dhd/sys/dhd_cdc.o \
+	src/dhd/sys/dhd_sdio.o \
+	src/dhd/sys/dhd_linux_sched.o \
+	src/bcmsdio/sys/bcmsdh_sdmmc.o \
+	src/bcmsdio/sys/bcmsdh.o \
+	src/bcmsdio/sys/bcmsdh_linux.o \
+	src/bcmsdio/sys/bcmsdh_sdmmc_linux.o \
+

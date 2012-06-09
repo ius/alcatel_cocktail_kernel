@@ -886,12 +886,14 @@ static int __devexit pmic8058_kp_remove(struct platform_device *pdev)
 	return 0;
 }
 
+extern int jrd_fm_status;
 #ifdef CONFIG_PM
 static int pmic8058_kp_suspend(struct device *dev)
 {
 	struct pmic8058_kp *kp = dev_get_drvdata(dev);
 
 	if (device_may_wakeup(dev) && !pmic8058_kp_disabled(kp)) {
+             if (jrd_fm_status)
 		enable_irq_wake(kp->key_sense_irq);
 	} else {
 		mutex_lock(&kp->mutex);

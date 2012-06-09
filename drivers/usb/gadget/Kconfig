@@ -911,6 +911,12 @@ config USB_CSW_HACK
 	 This csw hack feature is for increasing the performance of the mass
 	 storage
 
+config USB_ANDROID_CDROM
+	boolean "Android gadget cdrom function"
+	depends on USB_ANDROID && SWITCH
+	default y
+	help
+	  Provides USB cdrom function for android gadget driver.
 
 config USB_ANDROID_MTP
 	boolean "Android MTP function"

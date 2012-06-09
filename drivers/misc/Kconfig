@@ -335,6 +335,12 @@ config SENSORS_AKM8976
 	help
 	  AKM8976 Compass Driver implemented by HTC.
 
+config SENSORS_PN544
+	tristate "PN544 NFC Driver"
+	depends on I2C
+	help
+	  PN544 NFC Driver.
+
 config VP_A1026
 	tristate "A1026 Voice Processor Driver"
 	depends on I2C
@@ -519,6 +525,28 @@ config PMIC8058_BATTALARM
 	  Qualcomm PM8058 PMIC chip.  This support allows for configuration of
 	  the alarm module as well as interrupt handling.
 
+config POWER_OFF_CHARGING
+    tristate "misc driver for power off charging"
+
+config PLSENSOR
+	tristate "P/L senosr driver"
+	depends on I2C
+	help
+	  This option enables support for the P/L sensor.
+
+config TMD2771
+	tristate "P/L senosr"
+	depends on PLSENSOR
+	help
+	  This option enables support for the P/L sensor.
+
+config TORCH_SGM3140
+       tristate "SGM3140 Flash and Torch driver"
+       help
+          this is The SGM3140 is a current-regulated charge pump 
+	  ideal for powering high brightness LEDs for camera 
+	  flash applications.
+
 config TZCOM
 	tristate "Trustzone Communicator driver"
 	default n
@@ -527,10 +555,20 @@ config TZCOM
 	  TrustZone Operating Environment (TZBSP) using Secure Channel
 	  Manager (SCM) interface.
 
+config TDA9988
+	tristate "NXP HDMI chip TDA9988 driver"
+	default n
+	help
+	  This chip packets image data outputed in DTV interface and
+          audio data outputed in IIS bus to send them to HDMI TV/diaply.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
 source "drivers/misc/iwmc3200top/Kconfig"
 source "drivers/misc/video_core/720p/Kconfig"
+source "drivers/misc/mpu3050/Kconfig"
+
+  
 
 endif # MISC_DEVICES

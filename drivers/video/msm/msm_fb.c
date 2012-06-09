@@ -118,6 +118,30 @@ int msm_fb_debugfs_file_index;
 struct dentry *msm_fb_debugfs_root;
 struct dentry *msm_fb_debugfs_file[MSM_FB_MAX_DBGFS];
 
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+int msmfb_bootup = 0;
+
+static ssize_t msm_fb_bootup_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+
+        ret = snprintf(buf, 2, "%u\n", msmfb_bootup);
+
+	return ret;
+}
+
+static ssize_t msm_fb_bootup_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count){
+        char *tmp = NULL;
+        msmfb_bootup = (int)simple_strtoul(buf, &tmp, 10);
+        return 0;
+}
+static struct device_attribute msmfb_bootup_attrs =
+        __ATTR(bootup, 0664, msm_fb_bootup_show, msm_fb_bootup_store);
+
+#endif
+
 DEFINE_MUTEX(msm_fb_notify_update_sem);
 void msmfb_no_update_notify_timer_cb(unsigned long data)
 {
@@ -356,6 +380,18 @@ static int msm_fb_probe(struct platform_device *pdev)
 
 	pdev_list[pdev_list_cnt++] = pdev;
 	msm_fb_create_sysfs(pdev);
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+        {
+           struct msm_fb_panel_data *pdata =
+		(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+           
+           if (MDDI_PANEL == pdata->panel_info.type){
+              int ret = sysfs_create_file(&mfd->fbi->dev->kobj, &msmfb_bootup_attrs.attr); 
+              if (ret)
+                 dev_dbg(&pdev->dev, "Failed to create bootup in sysfs\n");
+            }
+        }
+#endif
 	return 0;
 }
 
@@ -368,6 +404,16 @@ static int msm_fb_remove(struct platform_device *pdev)
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 
 	msm_fb_remove_sysfs(pdev);
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+        {
+            struct msm_fb_panel_data *pdata =
+		(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+           
+            if (MDDI_PANEL == pdata->panel_info.type)   
+                //remove sys interface
+                sysfs_remove_file(&mfd->fbi->dev->kobj,&msmfb_bootup_attrs.attr); 
+        }
+#endif
 
 	pm_runtime_disable(mfd->fbi->dev);
 
@@ -638,7 +684,16 @@ static void msmfb_early_resume(struct early_suspend *h)
 {
 	struct msm_fb_data_type *mfd = container_of(h, struct msm_fb_data_type,
 						    early_suspend);
+
+//[PR241984],by qiujing.ren@tct-nj.com, refer to QCT00818498, update the last frame [begin]
+        struct fb_info *fbi = mfd->fbi;
 	msm_fb_resume_sub(mfd);
+        if(mfd->panel_info.type == MDDI_PANEL)
+        {
+               mdp_dma_pan_update(fbi);
+               msleep(17);
+        }
+//[end]
 }
 #endif
 

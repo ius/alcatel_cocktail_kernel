@@ -2724,7 +2724,11 @@ static inline struct sk_buff *handle_ing(struct sk_buff *skb,
 					 struct packet_type **pt_prev,
 					 int *ret, struct net_device *orig_dev)
 {
+#ifdef CONFIG_BCM_4330
+	if (!skb->dev->rx_queue.qdisc || (skb->dev->rx_queue.qdisc == &noop_qdisc))
+#else
 	if (skb->dev->rx_queue.qdisc == &noop_qdisc)
+#endif
 		goto out;
 
 	if (*pt_prev) {

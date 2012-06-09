@@ -42,6 +42,7 @@
 #define DRIVER_NAME	"msm_otg"
 static void otg_reset(struct otg_transceiver *xceiv, int phy_reset);
 static void msm_otg_set_vbus_state(int online);
+
 #ifdef CONFIG_USB_EHCI_MSM_72K
 static void msm_otg_set_id_state(int id);
 #else
@@ -144,14 +145,14 @@ static int usb_ulpi_read(struct otg_transceiver *xceiv, u32 reg)
 #ifdef CONFIG_USB_EHCI_MSM_72K
 static void enable_idgnd(struct msm_otg *dev)
 {
-	unsigned temp;
-
+	unsigned temp;	
 	/* Do nothing if instead of ID pin, USER controls mode switch */
 	if (dev->pdata->otg_mode == OTG_USER_CONTROL)
 		return;
 
 	ulpi_write(dev, (1<<4), 0x0E);
 	ulpi_write(dev, (1<<4), 0x11);
+
 	ulpi_write(dev, (1<<0), 0x0B);
 	temp = OTGSC_IDIE | OTGSC_IDPU;
 	writel_relaxed(readl_relaxed(USB_OTGSC) | temp, USB_OTGSC);
@@ -159,11 +160,11 @@ static void enable_idgnd(struct msm_otg *dev)
 
 static void disable_idgnd(struct msm_otg *dev)
 {
-	unsigned temp;
-
+	unsigned temp;	
 	/* Do nothing if instead of ID pin, USER controls mode switch */
 	if (dev->pdata->otg_mode == OTG_USER_CONTROL)
 		return;
+	
 	temp = OTGSC_IDIE | OTGSC_IDPU;
 	writel_relaxed(readl_relaxed(USB_OTGSC) & ~temp, USB_OTGSC);
 	ulpi_write(dev, (1<<4), 0x0F);
@@ -738,6 +739,7 @@ static int msm_otg_suspend(struct msm_otg *dev)
 				__func__, ret);
 		}
 	}
+	
 
 	if ((dev->otg.gadget && chg_type == USB_CHG_TYPE__WALLCHARGER) ||
 		host_bus_suspend ||
@@ -796,8 +798,9 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	msm_otg_vote_for_pclk_source(dev, 0);
 
 	atomic_set(&dev->in_lpm, 1);
+	switch_set_state(&dev->sdev, 0);
 
-	/*
+/*
 	 * TODO: put regulators in low power mode by assuming that
 	 * regulators are brought back to active state before PHY
 	 * becomes active. But this assumption becomes wrong in case of
@@ -807,8 +810,7 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	 * that there is no harm with this. Till hw folks confirms this
 	 * put regulators in lpm.
 	 */
-	 if (!host_bus_suspend && dev->pmic_vbus_notif_supp &&
-		!test_bit(ID_A, &dev->inputs)) {
+	if (!host_bus_suspend && dev->pmic_vbus_notif_supp && !test_bit(ID_A, &dev->inputs)) {
 		pr_debug("phy can power collapse: (%d)\n",
 			can_phy_power_collapse(dev));
 		if (can_phy_power_collapse(dev) && dev->pdata->ldo_enable) {
@@ -875,6 +877,7 @@ static int msm_otg_resume(struct msm_otg *dev)
 	}
 
 	atomic_set(&dev->in_lpm, 0);
+	switch_set_state(&dev->sdev, 1);
 
 	pr_info("%s: usb exited from low power mode\n", __func__);
 
@@ -906,9 +909,10 @@ static void msm_otg_resume_w(struct work_struct *w)
 {
 	struct msm_otg	*dev = container_of(w, struct msm_otg, otg_resume_work);
 	unsigned long timeout;
-
+////////////////////////
 	if (can_phy_power_collapse(dev) && dev->pdata->ldo_enable)
 		dev->pdata->ldo_enable(1);
+////////////////////////
 
 	msm_otg_get_resume(dev);
 
@@ -933,7 +937,6 @@ phy_resumed:
 		dev->pmic_id_notif_supp = 0;
 		enable_idgnd(dev);
 	}
-
 	/* Enable Idabc interrupts as these were disabled before entering LPM */
 	enable_idabc(dev);
 
@@ -944,6 +947,7 @@ phy_resumed:
 	 * yet. Hence update the ACA states explicitly.
 	 */
 	set_aca_id_inputs(dev);
+
 
 	/* If resume signalling finishes before lpm exit, PCD is not set in
 	 * USBSTS register. Drive resume signal to the downstream device now
@@ -1055,12 +1059,14 @@ static int msm_otg_set_suspend(struct otg_transceiver *xceiv, int suspend)
 			}
 			udelay(10);
 		}
-		if (dev->pmic_id_notif_supp) {
+	
+	if (dev->pmic_id_notif_supp) {
 			dev->pdata->pmic_id_notif_init(
 				&msm_otg_set_id_state, 0);
 			dev->pmic_id_notif_supp = 0;
 			enable_idgnd(dev);
-		}
+		}	
+
 out:
 		enable_idabc(dev);
 		enable_irq(dev->irq);
@@ -1089,6 +1095,8 @@ static int msm_otg_set_peripheral(struct otg_transceiver *xceiv,
 	dev->otg.gadget = gadget;
 	pr_info("peripheral driver registered w/ tranceiver\n");
 
+	/* send otg state in bootup */
+	switch_set_state(&dev->sdev, 1);
 	wake_lock(&dev->wlock);
 	queue_work(dev->wq, &dev->sm_work);
 	return 0;
@@ -1185,6 +1193,7 @@ static int msm_otg_set_host(struct otg_transceiver *xceiv, struct usb_bus *host)
 	return 0;
 }
 
+
 static void msm_otg_set_id_state(int id)
 {
 	struct msm_otg *dev = the_msm_otg;
@@ -1195,9 +1204,11 @@ static void msm_otg_set_id_state(int id)
 
 	if (id) {
 		set_bit(ID, &dev->inputs);
+		
 	} else {
 		clear_bit(ID, &dev->inputs);
 		set_bit(A_BUS_REQ, &dev->inputs);
+		
 	}
 	spin_lock_irqsave(&dev->lock, flags);
 	if (dev->otg.state != OTG_STATE_UNDEFINED) {
@@ -2268,7 +2279,7 @@ static void msm_otg_sm_work(struct work_struct *w)
 	 */
 	if (!work_pending(&dev->sm_work) && !hrtimer_active(&dev->timer) &&
 			!work_pending(&dev->otg_resume_work))
-		wake_unlock(&dev->wlock);
+		wake_lock_timeout(&dev->wlock, HZ);
 }
 
 #ifdef CONFIG_USB_MSM_ACA
@@ -2668,6 +2679,7 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 
 	if (dev->pdata->pmic_vbus_irq)
 		dev->vbus_on_irq = dev->pdata->pmic_vbus_irq;
+	
 
 	/* vote for vddcx, as PHY cannot tolerate vddcx below 1.0V */
 	if (dev->pdata->init_vddcx) {
@@ -2757,10 +2769,19 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 		goto chg_deinit;
 	}
 
+	dev->sdev.name = DRIVER_NAME;
+	ret = switch_dev_register(&dev->sdev);
+	if (ret) {
+		pr_err("%s: switch_dev_register failed\n", __func__);
+		otg_debugfs_cleanup();
+		goto chg_deinit;
+	}
+
 #ifdef CONFIG_USB_OTG
 	ret = sysfs_create_group(&pdev->dev.kobj, &msm_otg_attr_grp);
 	if (ret < 0) {
 		pr_err("%s: Failed to create the sysfs entry\n", __func__);
+		switch_dev_unregister(&ui->sdev);
 		otg_debugfs_cleanup();
 		goto chg_deinit;
 	}
@@ -2857,7 +2878,7 @@ static int __exit msm_otg_remove(struct platform_device *pdev)
 		dev->pdata->pmic_vbus_notif_init(&msm_otg_set_vbus_state, 0);
 
 	if (dev->pdata->phy_id_setup_init)
-		dev->pdata->phy_id_setup_init(0);
+		dev->pdata->phy_id_setup_init(0);	
 
 	if (dev->pmic_id_notif_supp)
 		dev->pdata->pmic_id_notif_init(&msm_otg_set_id_state, 0);

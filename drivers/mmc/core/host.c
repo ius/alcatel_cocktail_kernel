@@ -175,6 +175,44 @@ static struct attribute_group dev_attr_grp = {
 	.attrs = dev_attrs,
 };
 
+#ifdef CONFIG_BCM_CARD_DETECT
+#define MMC_SDIO_SLOT 1
+struct mmc_host *sdio_host = NULL;
+
+static int select_sdio_host(struct mmc_host *host, int add) {
+	if (!add){
+		if (host == sdio_host) {
+			sdio_host = NULL;
+			printk("%s: sdio_host cleaned.\n", __FUNCTION__);
+		}
+		return 0;
+	}
+
+	if (host->index == MMC_SDIO_SLOT) {
+		sdio_host = host;
+		printk("%s: sdio_host assigned. (%p)\n", __FUNCTION__, sdio_host);
+	}
+
+	return 0;
+}
+
+struct mmc_host *mmc_get_sdio_host(void) {
+	return sdio_host;
+}
+
+void bcm_detect_card(int n)
+{
+	if (sdio_host){
+		printk("%s: (%p), call \n", __FUNCTION__, sdio_host);
+		mmc_detect_change(sdio_host, n);
+		}
+	else
+		printk("%s: wifi host is NULL...\n", __FUNCTION__); 
+}
+
+EXPORT_SYMBOL(bcm_detect_card);
+#endif
+
 /**
  *	mmc_add_host - initialise host hardware
  *	@host: mmc host
@@ -207,6 +245,10 @@ int mmc_add_host(struct mmc_host *host)
 	mmc_start_host(host);
 	if (!(host->pm_flags & MMC_PM_IGNORE_PM_NOTIFY))
 		register_pm_notifier(&host->pm_notify);
+#ifdef CONFIG_BCM_CARD_DETECT
+	select_sdio_host(host, 1);
+	printk("Add check host %p \n", host);
+#endif
 
 	return 0;
 }
@@ -225,6 +267,10 @@ void mmc_remove_host(struct mmc_host *host)
 {
 	if (!(host->pm_flags & MMC_PM_IGNORE_PM_NOTIFY))
 		unregister_pm_notifier(&host->pm_notify);
+
+#ifdef CONFIG_BCM_CARD_DETECT
+	select_sdio_host(host, 0);
+#endif
 
 	mmc_stop_host(host);
 

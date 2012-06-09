@@ -177,7 +177,9 @@
 
 #define MSM_CAM_CTRL_CMD_DONE  0
 #define MSM_CAM_SENSOR_VFE_CMD 1
-
+#ifndef FIXED_CAMIF_RECOVERY
+#define FIXED_CAMIF_RECOVERY   //May be remove for 414005 version, for Qualcomm merged them
+#endif
 /*****************************************************
  *  structure
  *****************************************************/

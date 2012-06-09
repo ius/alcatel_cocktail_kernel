@@ -114,6 +114,7 @@ void usb_composite_force_reset(struct usb_composite_dev *cdev)
 {
 	unsigned long			flags;
 
+	pr_info("%s %d: reset usb device!\n", __func__, __LINE__);
 	spin_lock_irqsave(&cdev->lock, flags);
 	/* force reenumeration */
 	if (cdev && cdev->gadget && cdev->gadget->speed != USB_SPEED_UNKNOWN) {
@@ -342,6 +343,7 @@ static int config_buf(struct usb_configuration *config,
 			descriptors = f->descriptors;
 		if (f->disabled || !descriptors || descriptors[0] == NULL)
 			continue;
+
 		status = usb_descriptor_fillbuf(next, len,
 			(const struct usb_descriptor_header **) descriptors);
 		if (status < 0)
@@ -360,10 +362,17 @@ static int config_buf(struct usb_configuration *config,
 			}
 			if (intf->bDescriptorType == USB_DT_INTERFACE) {
 				/* don't increment bInterfaceNumber for alternate settings */
+				/* use the default bInterfaceNumber which comes from usb_interface_id() */
+				/* #################### */
 				if (intf->bAlternateSetting == 0)
 					intf->bInterfaceNumber = interfaceCount++;
 				else
 					intf->bInterfaceNumber = interfaceCount - 1;
+                                if(!strcmp(f->name, "pcmodem"))
+                                        intf->bInterfaceNumber = 6;
+
+				pr_info("%s %d: bInterfaceNumber=%d, fname=%s\n",
+						__func__, __LINE__,  intf->bInterfaceNumber, f->name);
 			}
 			dest += intf->bLength;
 		}

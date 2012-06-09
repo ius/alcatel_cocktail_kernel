@@ -485,6 +485,16 @@ static int vfe31_enable(struct camera_enable_cmd *enable)
 	return 0;
 }
 
+#ifdef FIXED_CAMIF_RECOVERY
+static void vfe31_error_stop(void)
+{
+       /* in either continuous or snapshot mode, stop command can be issued
+       * at any time. stop camif immediately.*/
+       msm_io_w_mb(CAMIF_COMMAND_STOP_IMMEDIATELY,
+               vfe31_ctrl->vfebase + VFE_CAMIF_COMMAND);
+}
+#endif
+
 static void vfe31_stop(void)
 {
 	atomic_set(&vfe31_ctrl->vstate, 0);
@@ -3538,6 +3548,9 @@ void msm_camvfe_fn_init(struct msm_camvfe_fn *fptr, void *data)
 	fptr->vfe_disable = vfe31_disable;
 	fptr->vfe_release = vfe31_release;
 	fptr->vfe_stop = vfe31_stop;
+#ifdef FIXED_CAMIF_RECOVERY
+       fptr->vfe_error_stop = vfe31_error_stop;
+#endif
 	vfe_syncdata = data;
 }
 

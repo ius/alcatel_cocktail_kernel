@@ -228,7 +228,10 @@ int msm_dmov_exec_cmd(unsigned id, unsigned int cmdptr);
 #define DMOV_SDC3_CHAN        8
 #define DMOV_SDC3_CRCI        12
 
-#define DMOV_SDC4_CHAN        8
+/* Follow Qualcomm's advice in case 00790113. 
+ * Take DMOV_NAND_CHAN as we don't use NAND.
+ **/
+#define DMOV_SDC4_CHAN        7
 #define DMOV_SDC4_CRCI        13
 
 #define DMOV_TSIF_CHAN        10

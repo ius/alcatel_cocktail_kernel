@@ -840,11 +840,20 @@ int gser_bind_config(struct usb_configuration *c, u8 port_num)
 	gser->port.func.disable = gser_disable;
 	gser->transport		= gserial_ports[port_num].transport;
 #ifdef CONFIG_MODEM_SUPPORT
-	/* We support only two ports for now */
-	if (port_num == 0)
+	/* We support three ports for now */
+	switch (port_num) {
+	case 0:
 		gser->port.func.name = "modem";
-	else
+		break;
+	case 1:
 		gser->port.func.name = "nmea";
+		break;
+	case 2:
+		gser->port.func.name = "pcmodem";
+		break;
+	default:
+		break;
+	}
 	gser->port.func.setup = gser_setup;
 	gser->port.connect = gser_connect;
 	gser->port.get_dtr = gser_get_dtr;
@@ -892,6 +901,16 @@ int fserial_modem_bind_config(struct usb_configuration *c)
 static struct android_usb_function modem_function = {
 	.name = "modem",
 	.bind_config = fserial_modem_bind_config,
+};
+
+int fserial_pcmodem_bind_config(struct usb_configuration *c)
+{
+	return gser_bind_config(c, 2);
+}
+
+static struct android_usb_function pcmodem_function = {
+	.name = "pcmodem",
+	.bind_config = fserial_pcmodem_bind_config,
 };
 
 static int fserial_remove(struct platform_device *dev)
@@ -954,6 +973,7 @@ static int __init fserial_probe(struct platform_device *pdev)
 probe_android_register:
 	android_register_function(&modem_function);
 	android_register_function(&nmea_function);
+	android_register_function(&pcmodem_function);
 
 	return 0;
 }

@@ -391,7 +391,7 @@ boolean mddi_host_register_write_int
 
 void mddi_wait(uint16 time_ms)
 {
-	mdelay(time_ms);
+    mdelay(time_ms);
 }
 
 void mddi_client_lcd_vsync_detected(boolean detected)

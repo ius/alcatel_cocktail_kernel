@@ -124,8 +124,7 @@ static struct clk *camio_jpeg_pclk;
 static struct clk *camio_vpe_clk;
 static struct vreg *vreg_gp2;
 static struct vreg *vreg_lvsw1;
-static struct vreg *vreg_gp6;
-static struct vreg *vreg_gp16;
+static struct vreg *vreg_wlan2;
 static struct msm_camera_io_ext camio_ext;
 static struct msm_camera_io_clk camio_clk;
 static struct resource *camifpadio, *csiio;
@@ -210,6 +209,7 @@ void msm_io_memcpy(void __iomem *dest_addr, void __iomem *src_addr, u32 len)
 
 static void msm_camera_vreg_enable(struct platform_device *pdev)
 {
+        int gp2_value = 0;
 	vreg_gp2 = vreg_get(NULL, "gp2");
 	if (IS_ERR(vreg_gp2)) {
 		pr_err("%s: VREG GP2 get failed %ld\n", __func__,
@@ -217,114 +217,171 @@ static void msm_camera_vreg_enable(struct platform_device *pdev)
 		vreg_gp2 = NULL;
 		return;
 	}
+       if(strcmp(pdev->name, "msm_camera_ov5647") == 0){ //just for test
+           gp2_value = 2850;
 
-	if (vreg_set_level(vreg_gp2, 2600)) {
-		pr_err("%s: VREG GP2 set failed\n", __func__);
-		goto gp2_put;
-	}
-
-	if (vreg_enable(vreg_gp2)) {
-		pr_err("%s: VREG GP2 enable failed\n", __func__);
-		goto gp2_put;
-	}
-
-	vreg_lvsw1 = vreg_get(NULL, "lvsw1");
-	if (IS_ERR(vreg_lvsw1)) {
-		pr_err("%s: VREG LVSW1 get failed %ld\n", __func__,
-			PTR_ERR(vreg_lvsw1));
+	   vreg_lvsw1 = vreg_get(NULL, "lvsw1");
+	   if (IS_ERR(vreg_lvsw1)) {
+		pr_err("%s: VREG LVSW1 get failed %ld\n", __func__,PTR_ERR(vreg_lvsw1));
 		vreg_lvsw1 = NULL;
 		goto gp2_disable;
-		}
-	if (vreg_set_level(vreg_lvsw1, 1800)) {
-		pr_err("%s: VREG LVSW1 set failed\n", __func__);
-		goto lvsw1_put;
-	}
-	if (vreg_enable(vreg_lvsw1)) {
+	    }
+
+           /*lvsw voltage can't been programmed, default 1.8V*/
+	   if (vreg_enable(vreg_lvsw1)) {
 		pr_err("%s: VREG LVSW1 enable failed\n", __func__);
 		goto lvsw1_put;
-	}
+	   }
 
-	if (!strcmp(pdev->name, "msm_camera_sn12m0pz")) {
-		vreg_gp6 = vreg_get(NULL, "gp6");
-		if (IS_ERR(vreg_gp6)) {
-			pr_err("%s: VREG GP6 get failed %ld\n", __func__,
-				PTR_ERR(vreg_gp6));
-			vreg_gp6 = NULL;
-			goto lvsw1_disable;
-		}
+	    if (vreg_set_level(vreg_gp2, gp2_value)) {
+		pr_err("%s: VREG GP2 set failed\n", __func__);
+		goto gp2_put;
+	   }
+           pr_err("%s gp2_value %d \n", __func__, gp2_value);
 
-		if (vreg_set_level(vreg_gp6, 3050)) {
-			pr_err("%s: VREG GP6 set failed\n", __func__);
-			goto gp6_put;
-		}
+	   if (vreg_enable(vreg_gp2)) {
+		pr_err("%s: VREG GP2 enable failed\n", __func__);
+		goto gp2_put;
+	    }
 
-		if (vreg_enable(vreg_gp6)) {
-			pr_err("%s: VREG GP6 enable failed\n", __func__);
-			goto gp6_put;
+		/* power on AF*/
+		vreg_wlan2 = vreg_get(NULL, "wlan2");
+		if (IS_ERR(vreg_wlan2)) {
+			pr_err("%s: VREG WLAN2 get failed %ld\n", __func__,PTR_ERR(vreg_wlan2));
+			vreg_wlan2 = NULL;
+		       goto lvsw1_disable;
 		}
-		vreg_gp16 = vreg_get(NULL, "gp16");
-		if (IS_ERR(vreg_gp16)) {
-			pr_err("%s: VREG GP16 get failed %ld\n", __func__,
-				PTR_ERR(vreg_gp16));
-			vreg_gp16 = NULL;
-			goto gp6_disable;
+		
+		if (vreg_set_level(vreg_wlan2, 2500)) {
+			pr_err("%s: VREG WLAN2 set failed\n", __func__);
+			goto wlan2_put;         
 		}
-
-		if (vreg_set_level(vreg_gp16, 1200)) {
-			pr_err("%s: VREG GP16 set failed\n", __func__);
-			goto gp16_put;
+		
+		if (vreg_enable(vreg_wlan2)) {
+			pr_err("%s: VREG WLAN2 enable failed\n", __func__);
+			goto wlan2_put;
 		}
 
-		if (vreg_enable(vreg_gp16)) {
-			pr_err("%s: VREG GP16 enable failed\n", __func__);
-			goto gp16_put;
-		}
-	}
+       }
+       else {
+            gp2_value = 2800;
+
+	    vreg_lvsw1 = vreg_get(NULL, "lvsw1");
+	    if (IS_ERR(vreg_lvsw1)) {
+		pr_err("%s: VREG LVSW1 get failed %ld\n", __func__,PTR_ERR(vreg_lvsw1));
+		vreg_lvsw1 = NULL;
+		goto gp2_disable;
+	    }
+
+            /*lvsw voltage can't been programmed, default 1.8V*/
+ 	    if (vreg_enable(vreg_lvsw1)) {
+		pr_err("%s: VREG LVSW1 enable failed\n", __func__);
+		goto lvsw1_put;
+	    }
+
+	   if (vreg_set_level(vreg_gp2, gp2_value)) {
+		pr_err("%s: VREG GP2 set failed\n", __func__);
+		goto gp2_put;
+	    }
+
+	    if (vreg_enable(vreg_gp2)) {
+		pr_err("%s: VREG GP2 enable failed\n", __func__);
+		goto gp2_put;
+	    }
+       }
+       
+
 	return;
-
-gp16_put:
-	vreg_put(vreg_gp16);
-	vreg_gp16 = NULL;
-gp6_disable:
-	 vreg_disable(vreg_gp6);
-gp6_put:
-	vreg_put(vreg_gp6);
-	vreg_gp6 = NULL;
+	
+wlan2_put:
+	vreg_put(vreg_wlan2);
+	vreg_wlan2 = NULL;
 lvsw1_disable:
 	vreg_disable(vreg_lvsw1);
 lvsw1_put:
 	vreg_put(vreg_lvsw1);
 	vreg_lvsw1 = NULL;
 gp2_disable:
-	vreg_disable(vreg_gp2);
+	vreg_disable(vreg_gp2);	
 gp2_put:
 	vreg_put(vreg_gp2);
 	vreg_gp2 = NULL;
 }
 
-static void msm_camera_vreg_disable(void)
+static void msm_camera_vreg_disable(struct platform_device *pdev)
 {
 	if (vreg_gp2) {
 		vreg_disable(vreg_gp2);
 		vreg_put(vreg_gp2);
 		vreg_gp2 = NULL;
 	}
+
 	if (vreg_lvsw1) {
 		vreg_disable(vreg_lvsw1);
 		vreg_put(vreg_lvsw1);
 		vreg_lvsw1 = NULL;
 	}
-	if (vreg_gp6) {
-		vreg_disable(vreg_gp6);
-		vreg_put(vreg_gp6);
-		vreg_gp6 = NULL;
-	}
-	if (vreg_gp16) {
-		vreg_disable(vreg_gp16);
-		vreg_put(vreg_gp16);
-		vreg_gp16 = NULL;
+
+	if(strcmp(pdev->name, "msm_camera_ov5647") == 0)
+	{
+		pr_err("%s: msm_camera_ov5647\n", __func__);
+		if (vreg_wlan2) {
+			vreg_disable(vreg_wlan2);
+			vreg_put(vreg_wlan2);
+			vreg_wlan2 = NULL;
+		}
 	}
 }
+
+#ifdef FIXED_CAMIF_RECOVERY
+#define APPS_RESET_2 (0x00000220)
+int msm_camio_csi_reset(struct platform_device *pdev)
+{
+	int rc = 0;
+	uint32_t val;
+	uint32_t reg;
+
+	struct resource *lcsiio;
+	void __iomem *lcsibase;
+	CDBG("msm_camio_csi_reset E\n");
+	lcsiio = request_mem_region(camio_ext.clkctl,
+		camio_ext.clkctlsz, pdev->name);
+	if (!lcsiio) {
+		pr_err("request_mem_region failed\n");
+		rc = -EBUSY;
+		goto enable_fail;
+	}
+	CDBG("request_mem_region Success\n");
+	lcsibase = ioremap(camio_ext.clkctl,
+		camio_ext.clkctlsz);
+	if (!lcsibase) {
+		rc = -ENOMEM;
+		pr_err("ioremap failed\n");
+		goto csi_busy;
+	}
+	CDBG("ioremap success\n");
+	val = 0x7;
+	reg = msm_io_r(lcsibase + APPS_RESET_2);
+	CDBG("reg value = 0x%X\n", reg);
+	val = reg | val;
+	msm_io_w(val, lcsibase + APPS_RESET_2);
+	CDBG("msm_io_write success\n");
+	usleep(100);
+	val = reg & 0xFFFFFFF8;
+	msm_io_w(val, lcsibase + APPS_RESET_2);
+	usleep(100);
+	iounmap(lcsibase);
+	release_mem_region(camio_ext.clkctl, camio_ext.clkctlsz);
+	CDBG("msm_camio_csi_reset X\n");
+	return 0;
+csi_busy:
+	release_mem_region(camio_ext.clkctl, camio_ext.clkctlsz);
+enable_fail:
+	return rc;
+
+}
+
+#endif
 
 int msm_camio_clk_enable(enum msm_camio_clk_type clktype)
 {
@@ -714,7 +771,7 @@ int msm_camio_probe_off(struct platform_device *pdev)
 {
 	struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
-	msm_camera_vreg_disable();
+	msm_camera_vreg_disable(pdev);
 	camdev->camera_gpio_off();
 	return msm_camio_clk_disable(CAMIO_CAM_MCLK_CLK);
 }
@@ -754,7 +811,7 @@ common_fail:
 	msm_camio_clk_disable(CAMIO_CAM_MCLK_CLK);
 	msm_camio_clk_disable(CAMIO_VFE_CLK);
 	msm_camio_clk_disable(CAMIO_CAMIF_PAD_PBDG_CLK);
-	msm_camera_vreg_disable();
+	msm_camera_vreg_disable(pdev);
 	camdev->camera_gpio_off();
 	return rc;
 }
@@ -765,7 +822,7 @@ int msm_camio_sensor_clk_off(struct platform_device *pdev)
 	struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
 	camdev->camera_gpio_off();
-	msm_camera_vreg_disable();
+	msm_camera_vreg_disable(pdev);
 	rc = msm_camio_clk_disable(CAMIO_CAM_MCLK_CLK);
 	rc = msm_camio_clk_disable(CAMIO_CAMIF_PAD_PBDG_CLK);
 	if (!sinfo->csi_if) {

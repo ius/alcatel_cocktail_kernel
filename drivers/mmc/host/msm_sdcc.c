@@ -50,7 +50,11 @@
 #include <mach/dma.h>
 #include <mach/htc_pwrsink.h>
 #include <mach/sdio_al.h>
-
+///////////
+#include <linux/mfd/pmic8058.h>
+#include <linux/gpio.h>
+#include <mach/gpio.h>
+///////////
 
 #include "msm_sdcc.h"
 
@@ -69,6 +73,20 @@ static int  msmsdcc_dbg_init(void);
 #endif
 
 static unsigned int msmsdcc_pwrsave = 1;
+////////////////////////////////////
+struct pm8058_gpio sdc4_en = {
+		.direction      = PM_GPIO_DIR_OUT,
+		.pull           = PM_GPIO_PULL_NO,
+		.vin_sel        = PM_GPIO_VIN_L5,
+		.function       = PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol    = 0,
+		.out_strength   = PM_GPIO_STRENGTH_LOW,
+		.output_value   = 0,
+	};
+#define PMIC_GPIO_SDC4_EN_N	18  /* PMIC GPIO Number 19 */
+#define PM8058_GPIO_PM_TO_SYS(pm_gpio)     (pm_gpio + NR_GPIO_IRQS)
+
+////////////////////////////////////
 
 static struct mmc_command dummy52cmd;
 static struct mmc_request dummy52mrq = {
@@ -473,7 +491,10 @@ msmsdcc_start_command_deferred(struct msmsdcc_host *host,
 	      (cmd->opcode == 53))
 		*c |= MCI_CSPM_DATCMD;
 
-	if (host->prog_scan && (cmd->opcode == 12)) {
+	/* in case, some emmc won't go to sleep if we stop polling the busy pin
+	    or toggling clock pin, wait for busy go high for command 5 sleep/
+	    awake as well */ 
+	if ((host->prog_scan && (cmd->opcode == 12)) || (cmd->opcode == 5 && host->mmc->index != 1)) {
 		*c |= MCI_CPSM_PROGENA;
 		host->prog_enable = 1;
 	}
@@ -1430,11 +1451,36 @@ msmsdcc_check_status(unsigned long data)
 {
 	struct msmsdcc_host *host = (struct msmsdcc_host *)data;
 	unsigned int status;
+/////////////////////
+        int rc;
+/////////////////////
 
 	if (!host->plat->status) {
 		mmc_detect_change(host->mmc, 0);
 	} else {
 		status = host->plat->status(mmc_dev(host->mmc));
+////////////////////////////////////
+        if(host->pdev_id == 4){
+                if(status == 1)
+                       sdc4_en.function = PM_GPIO_FUNC_NORMAL;
+                if(status == 0)
+                        sdc4_en.function = PM_GPIO_FUNC_1;
+
+        rc = pm8058_gpio_config(PMIC_GPIO_SDC4_EN_N, &sdc4_en);
+               if (rc) {
+	        	pr_err("%s PMIC_GPIO_SDC4_EN_N   pm8058 gpio_config failed\n",__func__);
+                         }
+
+	rc = gpio_request(PM8058_GPIO_PM_TO_SYS(PMIC_GPIO_SDC4_EN_N),
+			  "sdc4_en");
+	if (rc) {
+		pr_err("%s PMIC_GPIO_SDC4_EN_N gpio_request failed\n",__func__);
+		}
+	gpio_set_value_cansleep(
+			PM8058_GPIO_PM_TO_SYS(PMIC_GPIO_SDC4_EN_N), 0);
+}
+////////////////////////////////////
+
 		host->eject = !status;
 		if (status ^ host->oldstat) {
 			pr_info("%s: Slot status change detected (%d -> %d)\n",
@@ -1658,7 +1704,7 @@ static void msmsdcc_req_tout_timer_hdlr(unsigned long data)
 	}
 	spin_unlock_irqrestore(&host->lock, flags);
 }
-
+#include "msm_sdcc_debug.c"
 static int
 msmsdcc_probe(struct platform_device *pdev)
 {
@@ -1672,6 +1718,7 @@ msmsdcc_probe(struct platform_device *pdev)
 	struct resource *dma_crci_res = NULL;
 	int ret;
 	int i;
+        int rc;
 
 	/* must have platform data */
 	if (!plat) {
@@ -1922,6 +1969,28 @@ msmsdcc_probe(struct platform_device *pdev)
 		host->oldstat = plat->status(mmc_dev(host->mmc));
 		host->eject = !host->oldstat;
 	}
+///////////////////////////////////////////////////////////
+        if(host->pdev_id == 4){
+                if(host->oldstat == 1)
+                        sdc4_en.function = PM_GPIO_FUNC_NORMAL;
+                if(host->oldstat == 0)
+                        sdc4_en.function = PM_GPIO_FUNC_1;
+
+                rc = pm8058_gpio_config(PMIC_GPIO_SDC4_EN_N, &sdc4_en);
+                if (rc) {
+                        pr_err("%s PMIC_GPIO_SDC4_EN_N   pm8058_gpio_config failed\n",__func__);
+                          }
+
+                rc = gpio_request(PM8058_GPIO_PM_TO_SYS(PMIC_GPIO_SDC4_EN_N),
+                          "sdc4_en");
+                if (rc) {
+                       pr_err("%s PMIC_GPIO_SDC4_EN_N gpio_request failed\n",__func__);
+                        }
+                
+                 gpio_set_value_cansleep(PM8058_GPIO_PM_TO_SYS(PMIC_GPIO_SDC4_EN_N), 0);
+}
+///////////////////////////////////////////////////////////
+
 
 	if (plat->status_irq) {
 		ret = request_threaded_irq(plat->status_irq, NULL,
@@ -2026,6 +2095,7 @@ msmsdcc_probe(struct platform_device *pdev)
 		if (ret)
 			goto platform_irq_free;
 	}
+	ret = sysfs_create_group(&pdev->dev.kobj, &dev_debug_attr_grp);
 	return 0;
 
  platform_irq_free:
@@ -2242,7 +2312,19 @@ msmsdcc_runtime_suspend(struct device *dev)
 		 * simple become pm usage counter increment operations.
 		 */
 		pm_runtime_get_noresume(dev);
-		rc = mmc_suspend_host(mmc);
+
+		if(!mmc->card || mmc->card->type != MMC_TYPE_SDIO)
+			rc = mmc_suspend_host(mmc);
+		
+		else if(host->clks_on) { 
+			clk_disable(host->clk);
+			if (!IS_ERR(host->pclk))
+				clk_disable(host->pclk);
+			if (!IS_ERR_OR_NULL(host->dfab_pclk))
+				clk_disable(host->dfab_pclk);
+			host->clks_on = 0;
+		}
+		
 		pm_runtime_put_noidle(dev);
 
 		if (!rc) {
@@ -2313,7 +2395,18 @@ msmsdcc_runtime_resume(struct device *dev)
 
 		spin_unlock_irqrestore(&host->lock, flags);
 
-		mmc_resume_host(mmc);
+		if(!mmc->card || mmc->card->type != MMC_TYPE_SDIO)
+			mmc_resume_host(mmc);
+
+		else if(!host->clks_on) {
+			host->clks_on = 1;
+			if (!IS_ERR_OR_NULL(host->dfab_pclk))
+				clk_enable(host->dfab_pclk);
+			if (!IS_ERR(host->pclk))
+				clk_enable(host->pclk);
+			clk_enable(host->clk);
+		}
+
 
 		/*
 		 * FIXME: Clearing of flags must be handled in clients
@@ -2497,7 +2590,7 @@ static void msmsdcc_dbg_createhost(struct msmsdcc_host *host)
 {
 	if (debugfs_dir) {
 		debugfs_file = debugfs_create_file(mmc_hostname(host->mmc),
-							0644, debugfs_dir, host,
+							0664, debugfs_dir, host,
 							&msmsdcc_dbg_state_ops);
 	}
 }

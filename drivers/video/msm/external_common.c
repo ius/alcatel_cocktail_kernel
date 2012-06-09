@@ -1446,6 +1446,10 @@ void hdmi_common_init_panel_info(struct msm_panel_info *pinfo)
 	/* blue */
 	pinfo->lcdc.underflow_clr = 0xff;
 	pinfo->lcdc.hsync_skew = 0;
+    //lxm add for mode switch
+	pinfo->mode2_xres = 1280;
+	pinfo->mode2_yres = 720;
+	pinfo->mode2_bpp = 24;
 }
 EXPORT_SYMBOL(hdmi_common_init_panel_info);
 #endif

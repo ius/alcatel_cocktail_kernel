@@ -67,7 +67,7 @@ obj-$(CONFIG_MSM_SMD) += smd.o smd_debug.o remote_spinlock.o
 ifndef CONFIG_ARCH_MSM8960
 ifndef CONFIG_ARCH_MSM8X60
 	obj-$(CONFIG_MSM_SMD) += pmic.o
-	obj-$(CONFIG_MSM_SMD) += nand_partitions.o
+#	obj-$(CONFIG_MSM_SMD) += nand_partitions.o
 	obj-$(CONFIG_MSM_ONCRPCROUTER) += rpc_hsusb.o rpc_pmapp.o rpc_fsusb.o
 endif
 endif
@@ -167,7 +167,11 @@ obj-$(CONFIG_MACH_MSM7X27_FFA) += board-msm7x27.o devices-msm7x27.o
 obj-$(CONFIG_MACH_MSM7X27A_RUMI3) += board-msm7x27a.o devices-msm7x27a.o
 obj-$(CONFIG_MACH_MSM7X27A_SURF) += board-msm7x27a.o devices-msm7x27a.o
 obj-$(CONFIG_MACH_MSM7X27A_FFA) += board-msm7x27a.o devices-msm7x27a.o
+ifdef CONFIG_MACH_MSM7X30_COCKTAIL
+obj-$(CONFIG_ARCH_MSM7X30) += board-msm7x30-cocktail.o devices-msm7x30-cocktail.o memory_topology.o
+else
 obj-$(CONFIG_ARCH_MSM7X30) += board-msm7x30.o devices-msm7x30.o memory_topology.o
+endif
 obj-$(CONFIG_ARCH_MSM7X30) += clock-local.o clock-7x30.o acpuclock-7x30.o
 obj-$(CONFIG_MACH_MSM7X25_SURF) += board-msm7x27.o devices-msm7x25.o
 obj-$(CONFIG_MACH_MSM7X25_FFA) += board-msm7x27.o devices-msm7x25.o

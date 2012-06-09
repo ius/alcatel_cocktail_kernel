@@ -49,10 +49,19 @@
 #include "epautoconf.c"
 #include "composite.c"
 
+//#define SWITCH_PID
 MODULE_AUTHOR("Mike Lockwood");
 MODULE_DESCRIPTION("Android Composite USB Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0");
+
+/* product id */
+#ifdef SWITCH_PID
+static int android_set_pid(const char *val, struct kernel_param *kp);
+static int android_get_pid(char *buffer, struct kernel_param *kp);
+module_param_call(product_id, android_set_pid, android_get_pid,	NULL, 0664);
+MODULE_PARM_DESC(product_id, "USB device product id");
+#endif
 
 static const char longname[] = "Gadget Android";
 
@@ -158,6 +167,7 @@ static void bind_functions(struct android_dev *dev)
 
 	for (i = 0; i < dev->num_functions; i++) {
 		char *name = *functions++;
+		pr_info("%s %d function: %s\n", __func__, __LINE__, name);
 		f = get_function(name);
 		if (f)
 			f->bind_config(dev->config);
@@ -258,17 +268,17 @@ static int get_vendor_id(struct android_dev *dev)
 static int get_product_id(struct android_dev *dev)
 {
 	struct android_usb_product *p = dev->products;
-	int count = dev->num_products;
-	int i;
+        int count = dev->num_products;
+        int i;
 
-	if (p) {
-		for (i = 0; i < count; i++, p++) {
-			if (product_matches_functions(p))
-				return p->product_id;
-		}
-	}
-	/* use default product ID */
-	return dev->product_id;
+        if(p){
+            for(i = 0; i< count;  i++, p++){
+                if(product_matches_functions(p))
+                    return p->product_id;
+                }
+            }
+        /*use default product ID*/
+        return dev->product_id;
 }
 
 static int __devinit android_bind(struct usb_composite_dev *cdev)
@@ -418,6 +428,17 @@ static void android_set_function_mask(struct android_usb_product *up)
 			if (!func->disabled)
 				usb_function_set_enabled(func, 0);
 		}
+
+		/* set the function's default state when reset UDC,
+		 * the policy of switching PID need this code.
+		 * but usb_cdrom always disabled by default.
+		 */
+#ifdef SWITCH_PID
+		if (!strcmp(func->name, "usb_mass_storage"))
+			usb_function_set_enabled(func, 0);
+#endif
+		if (!strcmp(func->name, "usb_cdrom"))
+			usb_function_set_enabled(func, 0);
 	}
 }
 
@@ -652,6 +673,74 @@ static void android_debugfs_cleanup(void)
        debugfs_remove(android_debug_root);
 }
 #endif
+
+#ifdef SWITCH_PID
+static int android_switch_product(u16 pid)
+{
+	struct android_dev *dev = _android_dev;
+	struct android_usb_product *up = dev->products;
+	int index;
+
+	for (index = 0; index < dev->num_products; index++, up++) {
+		if (pid == up->product_id)
+			break;
+	}
+
+	if (index >= dev->num_products) {
+		pr_err("%s %d: Invalid product_id\n", __func__, __LINE__);
+		return -1;
+	}
+
+	android_set_function_mask(up);
+
+	device_desc.idProduct = __constant_cpu_to_le16(pid);
+	if (dev->cdev)
+		dev->cdev->desc.idProduct = device_desc.idProduct;
+	usb_composite_force_reset(dev->cdev);
+
+	return 0;
+}
+
+static int android_set_pid(const char *val, struct kernel_param *kp)
+{
+	int ret = 0;
+	unsigned long tmp;
+
+	pr_info("%s %d pid=%s", __func__, __LINE__, val);
+
+	ret = strict_strtoul(val, 16, &tmp);
+	if (ret)
+		goto out;
+
+	/*
+	 * We come here even before android_probe, when product id
+	 * is passed via kernel command line.
+	 */
+	if (!_android_dev) {
+		device_desc.idProduct = tmp;
+		goto out;
+	}
+	ret = android_switch_product(tmp);
+out:
+	return ret;
+}
+
+static int android_get_pid(char *buffer, struct kernel_param *kp)
+{
+	int ret;
+	int product_id;
+	struct android_dev *dev = _android_dev;
+
+	product_id = get_product_id(dev);
+
+	pr_info("%s %d pid=%x\n", __func__, __LINE__, product_id);
+
+	ret = sprintf(buffer, "%x", product_id);
+
+	return ret;
+}
+#endif
+
 static int __init android_probe(struct platform_device *pdev)
 {
 	struct android_usb_platform_data *pdata = pdev->dev.platform_data;

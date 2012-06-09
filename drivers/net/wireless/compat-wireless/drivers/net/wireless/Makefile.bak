@@ -1,0 +1,2 @@
+#obj-$(CONFIG_ATH_COMMON)	+= ath/
+obj-$(CONFIG_BCM4329)	+= bcm4329/

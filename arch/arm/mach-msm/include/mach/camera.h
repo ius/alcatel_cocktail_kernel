@@ -28,10 +28,12 @@
 
 #include <mach/board.h>
 #include <media/msm_camera.h>
+/* if you want to get more log informations of camera, enable this micro */
+//#define CONFIG_MSM_CAMERA_DEBUG
 
-#define CONFIG_MSM_CAMERA_DEBUG
 #ifdef CONFIG_MSM_CAMERA_DEBUG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
+//#define CDBG(fmt, args...) printk(KERN_ERR fmt, ##args)
 #else
 #define CDBG(fmt, args...) do { } while (0)
 #endif
@@ -207,6 +209,9 @@ struct msm_camvfe_fn {
 	int (*vfe_disable)(struct camera_enable_cmd *,
 		struct platform_device *dev);
 	void (*vfe_release)(struct platform_device *);
+#ifdef FIXED_CAMIF_RECOVERY    
+       void (*vfe_error_stop)(void);
+#endif
 	void (*vfe_stop)(void);
 };
 
@@ -501,6 +506,9 @@ int msm_camio_jpeg_clk_disable(void);
 int msm_camio_vpe_clk_enable(uint32_t);
 int msm_camio_vpe_clk_disable(void);
 
+#ifdef FIXED_CAMIF_RECOVERY
+int msm_camio_csi_reset(struct platform_device *pdev);
+#endif
 int  msm_camio_clk_enable(enum msm_camio_clk_type clk);
 int  msm_camio_clk_disable(enum msm_camio_clk_type clk);
 int  msm_camio_clk_config(uint32_t freq);

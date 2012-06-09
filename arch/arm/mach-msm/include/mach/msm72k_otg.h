@@ -35,6 +35,7 @@
 #include <linux/usb/otg.h>
 #include <linux/wakelock.h>
 #include <mach/msm_hsusb.h>
+#include <linux/switch.h>
 
 #include <asm/mach-types.h>
 #include <mach/msm_hsusb.h>
@@ -161,6 +162,7 @@ struct msm_otg {
 	struct wake_lock wlock;
 	unsigned long b_last_se0_sess; /* SRP initial condition check */
 	unsigned long inputs;
+	
 	unsigned long tmouts;
 	u8 active_tmout;
 	struct hrtimer timer;
@@ -173,6 +175,7 @@ struct msm_otg {
 	struct timer_list	id_timer;	/* drives id_status polling */
 	unsigned		b_max_power;	/* ACA: max power of accessory*/
 #endif
+	struct switch_dev sdev;
 };
 
 static inline int pclk_requires_voting(struct otg_transceiver *xceiv)

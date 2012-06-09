@@ -1831,6 +1831,21 @@ static ssize_t debug_read(struct file *file, char __user *buf,
 	return r;
 }
 
+//Dump share memory log for crash debug, slhuang
+char * smem_log_dump(void)
+{
+    int bsize;
+    char * buf = debug_buffer;
+
+    bsize = debug_dump_sym(debug_buffer, EVENTS_PRINT_SIZE, 0);
+
+    if (bsize <= 128*1024)
+	return buf;
+    else 
+	return buf + (bsize - 128*1024);
+}
+EXPORT_SYMBOL(smem_log_dump);
+
 static ssize_t debug_read_cont(struct file *file, char __user *buf,
 			       size_t count, loff_t *ppos)
 {

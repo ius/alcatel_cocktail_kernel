@@ -29,6 +29,7 @@
 #include <linux/kdev_t.h>
 #include <linux/blkdev.h>
 #include <linux/mutex.h>
+#include <linux/smp_lock.h>
 #include <linux/scatterlist.h>
 #include <linux/string_helpers.h>
 
@@ -103,6 +104,7 @@ static int mmc_blk_open(struct block_device *bdev, fmode_t mode)
 	struct mmc_blk_data *md = mmc_blk_get(bdev->bd_disk);
 	int ret = -ENXIO;
 
+	lock_kernel();
 	if (md) {
 		if (md->usage == 2)
 			check_disk_change(bdev);
@@ -113,6 +115,7 @@ static int mmc_blk_open(struct block_device *bdev, fmode_t mode)
 			ret = -EROFS;
 		}
 	}
+	unlock_kernel();
 
 	return ret;
 }
@@ -121,7 +124,9 @@ static int mmc_blk_release(struct gendisk *disk, fmode_t mode)
 {
 	struct mmc_blk_data *md = disk->private_data;
 
+	lock_kernel();
 	mmc_blk_put(md);
+	unlock_kernel();
 	return 0;
 }
 
@@ -596,6 +601,9 @@ static struct mmc_blk_data *mmc_blk_alloc(struct mmc_card *card)
 	return ERR_PTR(ret);
 }
 
+#ifdef CONFIG_MACH_MSM7X30_COCKTAIL
+extern void crash_dump_init(struct gendisk *disk, struct mmc_card *card);
+#endif
 static int mmc_blk_probe(struct mmc_card *card)
 {
 	struct mmc_blk_data *md;
@@ -628,6 +636,12 @@ static int mmc_blk_probe(struct mmc_card *card)
 	mmc_set_bus_resume_policy(card->host, 1);
 #endif
 	add_disk(md->disk);
+	//Init crash dump target partition, slhuang
+#ifdef CONFIG_MACH_MSM7X30_COCKTAIL
+	if (!strcmp(md->disk->disk_name, "mmcblk0"))
+	    crash_dump_init(md->disk, card);
+#endif
+	//end
 	return 0;
 
  out:

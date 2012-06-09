@@ -454,7 +454,7 @@ void mdp4_mddi_overlay_kickoff(struct msm_fb_data_type *mfd,
 {
 	/* change mdp clk while mdp is idle` */
 	mdp4_set_perf_level();
-
+#if 0  //modify by cd_hwfu,for lcd tearing
 	if (mdp_hw_revision == MDP4_REVISION_V2_1) {
 		if (mdp4_overlay_status_read(MDP4_OVERLAY_TYPE_UNSET)) {
 			uint32  data;
@@ -476,6 +476,7 @@ void mdp4_mddi_overlay_kickoff(struct msm_fb_data_type *mfd,
 			mdp4_overlay_status_write(MDP4_OVERLAY_TYPE_SET, false);
 		}
 	}
+#endif	//end
 	mdp_enable_irq(MDP_OVERLAY0_TERM);
 	mfd->dma->busy = TRUE;
 	/* start OVERLAY pipe */

@@ -603,6 +603,9 @@ ifneq ($(KCFLAGS),)
         $(call warn-assign,CFLAGS)
         KBUILD_CFLAGS += $(KCFLAGS)
 endif
+ifeq ($(TARGET_BUILD_MMITEST),true)
+	KBUILD_CFLAGS += -DTARGET_BUILD_MMITEST
+endif
 
 # Use --build-id when available.
 LDFLAGS_BUILD_ID = $(patsubst -Wl$(comma)%,%,\

@@ -38,7 +38,7 @@ enum transport_type {
 	USB_GADGET_FSERIAL_TRANSPORT_SMD,
 };
 
-#define GSERIAL_NO_PORTS 2
+#define GSERIAL_NO_PORTS 3
 struct usb_gadget_fserial_platform_data {
 	enum transport_type	transport[GSERIAL_NO_PORTS];
 	unsigned		no_ports;

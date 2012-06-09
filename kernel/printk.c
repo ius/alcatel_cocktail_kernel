@@ -40,6 +40,12 @@
 
 #include <asm/uaccess.h>
 
+//add by cd_hwfu for save kernel panic info to /system/
+#ifdef CONFIG_KERNEL_PANIC_LOG
+extern void copy_to_dumpbuffer(char*);
+extern int dump_enabled(void);
+#endif
+
 /*
  * for_each_console() allows you to iterate on each console
  */
@@ -670,6 +676,11 @@ asmlinkage int printk(const char *fmt, ...)
 {
 	va_list args;
 	int r;
+//add by cd_hwfu for save kernel panic info to /system/
+#ifdef CONFIG_KERNEL_PANIC_LOG
+	static char buf[1024];
+	va_list args_1;
+#endif	
 
 #ifdef CONFIG_KGDB_KDB
 	if (unlikely(kdb_trap_printk)) {
@@ -682,6 +693,16 @@ asmlinkage int printk(const char *fmt, ...)
 	va_start(args, fmt);
 	r = vprintk(fmt, args);
 	va_end(args);
+//add by cd_hwfu for save kernel panic info to /system/
+#ifdef CONFIG_KERNEL_PANIC_LOG
+	if ( dump_enabled()){
+                va_start(args_1, fmt);
+                vsnprintf(buf, sizeof(buf), fmt, args_1);
+                va_end(args_1);
+
+                copy_to_dumpbuffer(buf);
+        }
+#endif
 
 	return r;
 }

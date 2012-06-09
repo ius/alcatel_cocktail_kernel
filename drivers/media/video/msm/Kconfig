@@ -121,6 +121,27 @@ config VB6801
 	---help---
 	  5M with flash
 
+config OV5647
+        bool "Sensor OmniVision OV5647 (5M)"
+        depends on MSM_CAMERA
+        default y
+        ---help---
+          OmniVision 5M Sensor with AutoFocus
+
+config OV7690
+        bool "Sensor OmniVision OV7690 (0.3M)"
+        depends on MSM_CAMERA
+        default y
+        ---help---
+          OmniVision .3M Sensor with AutoFocus
+
+config OV8820
+        bool "Sensor ov8820 (Bayer 8MP)"
+        depends on MSM_CAMERA && ARCH_MSM7X30
+        default y
+        ---help---
+          Omnivision Bayer 8MP Sensor
+
 config MSM_CAMERA_FLASH
 	bool "Qualcomm MSM camera flash support"
 	depends on MSM_CAMERA

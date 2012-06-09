@@ -168,4 +168,12 @@ else
 	fi
 fi
 
+set +e
+echo $res | grep '\+$' > /dev/null
+retval=$?
+
+if [ $retval != 0 ]; then
+	res=$res"+"
+fi  
+
 echo "$res"

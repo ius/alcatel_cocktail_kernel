@@ -28,6 +28,8 @@
 
 /* Timpani codec driver is activated through Marimba core driver */
 
+#define MUTE 0
+
 #define MAX_MDELAY_US 20000
 
 #define TIMPANI_PATH_MASK(x) (1 << (x))
@@ -3265,26 +3267,41 @@ static int timpani_adie_codec_set_master_mode(struct adie_codec_path *path_ptr,
 	return 0;
 }
 
+/* added by ping.wang for setting FM volume through QTR9215 AUXPGA 
+1) add a mute step;
+2) fixed a qualcomm's bug that can not set the current volume value;
+*/
 int timpani_adie_codec_set_device_analog_volume(
 		struct adie_codec_path *path_ptr,
 		u32 num_channels, u32 volume)
 {
 	u8 val;
 	u8 curr_val;
-	u8 i;
+	int i;
 
 	adie_codec_read(TIMPANI_A_AUXPGA_LR_GAIN, &curr_val);
 
+	val = volume;// PR200770-fred.wang-04
+
+	if(MUTE == val) {
+		adie_codec_write(0x33, 0xFF, 0xc0);
+		return 0;
+	} else {
+		adie_codec_write(0x33, 0xFF, 0x30);
+	}
+
 	/* Volume is expressed as a percentage. */
 	/* The upper nibble is the left channel, lower right channel. */
-	val = (u8)((volume * TIMPANI_CODEC_AUXPGA_GAIN_RANGE) / 100);
+
+	// PR200770-fred.wang-05
+	val = (u8)(volume / 10 - 1);
 	val |= val << 4;
 
 	if ((curr_val & 0x0F) < (val & 0x0F)) {
-		for (i = curr_val; i < val; i += 0x11)
+		for (i = curr_val; i <= val; i += 0x11)
 			adie_codec_write(TIMPANI_A_AUXPGA_LR_GAIN, 0xFF, i);
 	} else if ((curr_val & 0x0F) > (val & 0x0F)) {
-		for (i = curr_val; i > val; i -= 0x11)
+		for (i = curr_val; i >= val; i -= 0x11)
 			adie_codec_write(TIMPANI_A_AUXPGA_LR_GAIN, 0xFF, i);
 	}
 

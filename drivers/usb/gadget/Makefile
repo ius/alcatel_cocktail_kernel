@@ -74,6 +74,7 @@ obj-$(CONFIG_USB_F_SERIAL_SDIO)	+= f_serial.o u_sdio.o
 obj-$(CONFIG_USB_F_SERIAL_SMD)	+= f_serial.o u_smd.o
 obj-$(CONFIG_USB_ANDROID_ADB)	+= f_adb.o
 obj-$(CONFIG_USB_ANDROID_MASS_STORAGE)	+= f_mass_storage.o
+obj-$(CONFIG_USB_ANDROID_CDROM)	+= f_cdrom.o
 obj-$(CONFIG_USB_ANDROID_MTP)	+= f_mtp.o
 obj-$(CONFIG_USB_ANDROID_RNDIS)	+= f_rndis.o u_ether.o
 obj-$(CONFIG_USB_ANDROID_ACCESSORY)	+= f_accessory.o

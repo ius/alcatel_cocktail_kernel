@@ -40,6 +40,19 @@
 #include <mach/gpio.h>
 #include <mach/clk.h>
 
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+extern int msmfb_bootup;
+#endif 
+
+#ifdef CONFIG_MDDI_HIMAX_24BIT_WORKROUND
+extern void mddi_himax_ic_init_again(void);
+extern int mddi_himax_workround_enable(void);
+#endif
+
+#ifdef CONFIG_FB_MSM_MDDI_RY002Z
+extern void mddi_enable_high_clk(uint32 enable);
+#endif
+
 static int mddi_probe(struct platform_device *pdev);
 static int mddi_remove(struct platform_device *pdev);
 
@@ -195,7 +208,7 @@ static int mddi_off(struct platform_device *pdev)
 {
 	struct msm_fb_data_type *mfd;
 	boolean dma_pending, dma_update_flag;
-	int ret, i;
+	int ret = 0, i;
 
 	mfd = platform_get_drvdata(pdev);
 
@@ -208,11 +221,21 @@ static int mddi_off(struct platform_device *pdev)
 	}
 
 	pmdh_clk_enable();
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+        if (msmfb_bootup)
+#endif
 	ret = panel_next_off(pdev);
 	pmdh_clk_disable();
-
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+        //Close power now
+        if (msmfb_bootup)
+{
+#endif
 	if (mddi_pdata && mddi_pdata->mddi_power_save)
 		mddi_pdata->mddi_power_save(0);
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+}
+#endif
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(0);
 #else
@@ -220,6 +243,11 @@ static int mddi_off(struct platform_device *pdev)
 		clk_disable(mfd->ebi1_clk);
 #endif
 	pm_runtime_put(&pdev->dev);
+
+#ifdef CONFIG_FB_MSM_MDDI_RY002Z
+	mddi_enable_high_clk(0);
+#endif
+
 	return ret;
 }
 
@@ -233,11 +261,22 @@ static int mddi_on(struct platform_device *pdev)
 	u32 stat_reg;
 #endif
 
+#ifdef CONFIG_FB_MSM_MDDI_RY002Z
+	mddi_enable_high_clk(1);
+#endif
+
 	mfd = platform_get_drvdata(pdev);
 	pm_runtime_get(&pdev->dev);
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+        //Close LCD Power now
+        if (msmfb_bootup)
+{
+#endif
 	if (mddi_pdata && mddi_pdata->mddi_power_save)
 		mddi_pdata->mddi_power_save(1);
-
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+}
+#endif
 	pmdh_clk_enable();
 #ifdef ENABLE_FWD_LINK_SKEW_CALIBRATION
 	if (mddi_client_type < 2) {
@@ -280,7 +319,17 @@ static int mddi_on(struct platform_device *pdev)
 	if (mfd->ebi1_clk)
 		clk_enable(mfd->ebi1_clk);
 #endif
+
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+       if (msmfb_bootup)
+#endif
 	ret = panel_next_on(pdev);
+
+#ifdef CONFIG_MDDI_HIMAX_24BIT_WORKROUND
+	if(mddi_himax_workround_enable()){
+		mddi_himax_ic_init_again();
+	}
+#endif
 
 	return ret;
 }
@@ -307,10 +356,15 @@ static int mddi_probe(struct platform_device *pdev)
 
 		if (unlikely(!msm_pmdh_base))
 			return -ENOMEM;
-
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+                if (msmfb_bootup)//Close MDDI Power 
+{
+#endif
 		if (mddi_pdata && mddi_pdata->mddi_power_save)
 			mddi_pdata->mddi_power_save(1);
-
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+}
+#endif
 		mddi_resource_initialized = 1;
 		return 0;
 	}
@@ -400,6 +454,7 @@ static int mddi_probe(struct platform_device *pdev)
 	mfd->ebi1_clk = clk_get(NULL, "ebi1_mddi_clk");
 	if (IS_ERR(mfd->ebi1_clk))
 		return PTR_ERR(mfd->ebi1_clk);
+	//clk_set_rate(mfd->ebi1_clk, 200000000);
 	clk_set_rate(mfd->ebi1_clk, 65000000);
 #endif
 	/*
@@ -454,9 +509,15 @@ void mddi_disable(int lock)
 		printk(KERN_ERR "%s: clk_set_min_rate failed\n", __func__);
 
 	pmdh_clk_disable();
-
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+        if (msmfb_bootup)//Not clsoe power now
+{
+#endif
 	if (mddi_pdata && mddi_pdata->mddi_power_save)
 		mddi_pdata->mddi_power_save(0);
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+}
+#endif
 }
 
 #ifdef CONFIG_PM

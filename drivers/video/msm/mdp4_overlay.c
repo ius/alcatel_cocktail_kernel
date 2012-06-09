@@ -1865,6 +1865,9 @@ static uint32 mdp4_overlay_get_perf_level(struct mdp_overlay *req)
 	if (req->flags & MDP_DEINTERLACE)
 		return OVERLAY_PERF_LEVEL1;
 
+	if (mdp4_mddi_high_clk)
+		return OVERLAY_PERF_LEVEL1;		
+
 	if (mdp4_overlay_is_rgb_type(req->src.format) && is_fg &&
 		((req->src.width * req->src.height) <= OVERLAY_WSVGA_SIZE))
 		return OVERLAY_PERF_LEVEL4;
@@ -1894,6 +1897,8 @@ void mdp4_set_perf_level(void)
 	int cur_perf_level;
 
 	if (mdp4_extn_disp)
+		cur_perf_level = OVERLAY_PERF_LEVEL1;
+	else if(mdp4_mddi_high_clk)
 		cur_perf_level = OVERLAY_PERF_LEVEL1;
 	else
 		cur_perf_level = new_perf_level;

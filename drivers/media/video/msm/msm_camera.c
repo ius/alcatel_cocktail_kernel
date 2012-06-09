@@ -61,6 +61,7 @@ static int camera_node;
 static enum msm_camera_type camera_type[MSM_MAX_CAMERA_SENSORS];
 static uint32_t sensor_mount_angle[MSM_MAX_CAMERA_SENSORS];
 
+#ifdef CONFIG_MSM_CAMERA_DEBUG
 static const char *vfe_config_cmd[] = {
 	"CMD_GENERAL",  /* 0 */
 	"CMD_AXI_CFG_OUT1",
@@ -108,6 +109,7 @@ static const char *vfe_config_cmd[] = {
 	"CMD_AXI_CFG_SNAP_VPE",
 	"CMD_AXI_CFG_SNAP_THUMB_VPE",
 };
+#endif
 #define __CONTAINS(r, v, l, field) ({				\
 	typeof(r) __r = r;					\
 	typeof(v) __v = v;					\
@@ -799,7 +801,7 @@ static int msm_get_frame(struct msm_sync *sync, void __user *arg)
 		frame.stcam_conv_value = sync->stcam_conv_value;
 		frame.stcam_quality_ind = sync->stcam_quality_ind;
 	}
-
+	CDBG("%s: error code = %d\n", __func__, frame.error_code);
 	if (copy_to_user((void *)arg,
 				&frame, sizeof(struct msm_frame))) {
 		ERR_COPY_TO_USER();
@@ -2456,7 +2458,19 @@ static int msm_error_config(struct msm_sync *sync, void __user *arg)
 		free_qcmd(qcmd);
 		return -EFAULT;
 	}
+#ifdef FIXED_CAMIF_RECOVERY
+	CDBG("%s: Stop VFE immediately\n", __func__);
+	//sync->vfefn.vfe_stop();
+       sync->vfefn.vfe_error_stop();
 
+	CDBG("%s: Release sensor\n", __func__);
+	sync->sctrl.s_release();
+
+	CDBG("%s: Init sensor\n", __func__);
+	sync->sctrl.s_init(sync->sdata);
+
+	CDBG("%s: Error config done.\n", __func__);
+#endif
 	pr_err("%s: Enqueue Fake Frame with error code = %d\n", __func__,
 		qcmd->error_code);
 	msm_enqueue(&sync->frame_q, &qcmd->list_frame);
@@ -2636,7 +2650,7 @@ static int msm_pp_release(struct msm_sync *sync, void __user *arg)
 	unsigned long flags;
 
 	if (!sync->pp_mask) {
-		pr_warning("%s: pp not in progress for\n", __func__);
+		/*pr_warning("%s: pp not in progress for\n", __func__);*/
 		return -EINVAL;
 	}
 	if (sync->pp_mask & PP_PREV) {
@@ -3078,6 +3092,9 @@ static int msm_release_frame(struct inode *node, struct file *filep)
 	rc = __msm_release(pmsm->sync);
 	if (!rc) {
 		msm_queue_drain(&pmsm->sync->frame_q, list_frame);
+#ifdef FIXED_CAMIF_RECOVERY
+               msm_queue_drain(&pmsm->sync->vpe_q, list_vpe_frame);
+#endif
 		atomic_set(&pmsm->opened, 0);
 	}
 	return rc;

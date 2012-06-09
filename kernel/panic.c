@@ -23,11 +23,24 @@
 #include <linux/init.h>
 #include <linux/nmi.h>
 #include <linux/dmi.h>
+#ifdef CONFIG_KERNEL_PANIC_LOG
+#include <linux/fs.h>
+#include <asm/uaccess.h>
+#endif
 
 int panic_on_oops;
 static unsigned long tainted_mask;
 static int pause_on_oops;
 static int pause_on_oops_flag;
+
+//add by cd_hwfu for save kernel panic info to /system/
+#ifdef CONFIG_KERNEL_PANIC_LOG
+#define DUMP_BUFFER_SIZE	8192
+char dump_start = 0;
+char dump_buffer[DUMP_BUFFER_SIZE];
+int  dump_buffer_length = 0;
+#endif
+
 static DEFINE_SPINLOCK(pause_on_oops_lock);
 
 #ifndef CONFIG_PANIC_TIMEOUT
@@ -69,6 +82,24 @@ static void panic_blink_one_second(void)
 	}
 }
 
+//add by cd_hwfu for save kernel panic info to /system/
+#ifdef CONFIG_KERNEL_PANIC_LOG
+int dump_enabled(void){
+	return dump_start;
+}
+
+void copy_to_dumpbuffer(char *buf){
+        if(dump_buffer_length<DUMP_BUFFER_SIZE){
+                int cnt=snprintf(dump_buffer+dump_buffer_length,
+					DUMP_BUFFER_SIZE-dump_buffer_length,"%s",buf);
+                dump_buffer_length+=cnt;
+        }
+}
+#endif
+
+#ifdef CONFIG_MACH_MSM7X30_COCKTAIL
+extern int crash_dump_panic(void);
+#endif
 /**
  *	panic - halt the system
  *	@fmt: The text string to print
@@ -82,7 +113,14 @@ NORET_TYPE void panic(const char * fmt, ...)
 	static char buf[1024];
 	va_list args;
 	long i;
-
+	
+	//add by cd_hwfu for save kernel panic info to /system/
+#ifdef CONFIG_KERNEL_PANIC_LOG	
+	struct file *filep=NULL;
+	dump_start=1;
+#endif	
+	//end
+	
 	/*
 	 * It's possible to come here directly from a panic-assertion and
 	 * not have preempt disabled. Some functions called from here want
@@ -99,7 +137,21 @@ NORET_TYPE void panic(const char * fmt, ...)
 #ifdef CONFIG_DEBUG_BUGVERBOSE
 	dump_stack();
 #endif
-
+//crash dump to traceability partition, slhuang
+#ifdef CONFIG_MACH_MSM7X30_COCKTAIL
+	crash_dump_panic();
+#endif
+//end
+//add by cd_hwfu for save kernel panic info to /system/
+#ifdef CONFIG_KERNEL_PANIC_LOG
+	filep=filp_open("/data/local/kernel_panic",O_CREAT | O_RDWR|O_SYNC|O_TRUNC,0);
+	if(filep){
+		filep->f_op->write(filep,dump_buffer,dump_buffer_length,&filep->f_pos);
+		
+		filp_close(filep,NULL);
+	}
+#endif	
+//end
 	/*
 	 * If we have crashed and we have a crash kernel loaded let it handle
 	 * everything else.

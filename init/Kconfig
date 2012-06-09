@@ -463,6 +463,8 @@ config LOG_BUF_SHIFT
 		     13 =>  8 KB
 		     12 =>  4 KB
 
+config KERNEL_PANIC_LOG
+	bool "JRD KERNEL_PANIC_LOG"
 #
 # Architectures with an unreliable sched_clock() should select this:
 #

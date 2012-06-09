@@ -1062,11 +1062,14 @@ out:
 }
 
 /* Enable the transmitter Interrupt */
+void bluesleep_outgoing_data(void);
 static void msm_hs_start_tx_locked(struct uart_port *uport )
 {
 	struct msm_hs_port *msm_uport = UARTDM_TO_MSM(uport);
 
 	clk_enable(msm_uport->clk);
+
+	bluesleep_outgoing_data();
 
 	if (msm_uport->tx.tx_ready_int_en == 0) {
 		msm_uport->tx.tx_ready_int_en = 1;
@@ -1563,6 +1566,7 @@ static const char *msm_hs_type(struct uart_port *port)
 }
 
 /* Called when port is opened */
+void bluesleep_uart_open(struct uart_port *uport);
 static int msm_hs_startup(struct uart_port *uport)
 {
 	int ret;
@@ -1675,7 +1679,8 @@ static int msm_hs_startup(struct uart_port *uport)
 		dev_err(uport->dev, "set active error:%d\n", ret);
 	pm_runtime_enable(uport->dev);
 
-
+    /*lgh added for lpm*/
+    bluesleep_uart_open(uport);
 	return 0;
 }
 
@@ -1954,11 +1959,16 @@ static int __init msm_serial_hs_init(void)
  *     - Disables the port
  *     - Unhook the ISR
  */
+/* lgh added for lpm */
+void bluesleep_uart_close(struct uart_port *uport);
 static void msm_hs_shutdown(struct uart_port *uport)
 {
 	unsigned long flags;
 	struct msm_hs_port *msm_uport = UARTDM_TO_MSM(uport);
-
+        
+	/* lgh add for lpm */
+        bluesleep_uart_close(uport);
+	
 	BUG_ON(msm_uport->rx.flush < FLUSH_STOP);
 	tasklet_kill(&msm_uport->tx.tlet);
 	wait_event(msm_uport->rx.wait, msm_uport->rx.flush == FLUSH_SHUTDOWN);

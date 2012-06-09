@@ -36,8 +36,6 @@ config ARCH_MSM7X30
 	select CPU_V7
 	select MSM_REMOTE_SPINLOCK_DEKKERS
 	select ARCH_SPARSEMEM_ENABLE
-	select MEMORY_HOTPLUG
-	select MEMORY_HOTREMOVE
 	select MIGRATION
 	select ARCH_MEMORY_PROBE
 	select ARCH_MEMORY_REMOVE
@@ -265,6 +263,14 @@ config MACH_MSM7X30_FLUID
        bool "MSM7x30 FLUID"
        help
          Support for the Qualcomm MSM7x30 FLUID eval board.
+
+config MACH_MSM7X30_COCKTAIL
+       depends on ARCH_MSM7X30
+       depends on !MSM_STACKED_MEMORY
+       default y
+       bool "MSM7x30 Cocktail"
+       help
+         Support for the Qualcomm MSM7x30 Cocktail eval board.
 
 config MACH_SAPPHIRE
 	depends on ARCH_MSM7X01A
@@ -698,6 +704,13 @@ config MSM_JTAG_V7
 	help
           Add additional support for JTAG kernel debugging.
 
+config BCM4330_POWER
+	depends on (MACH_MSM7X30_COCKTAIL)
+	bool "BCM4330 Power Monitor Interface"
+	default n
+	---help---
+	  BCM4330 power controle interface.
+
 config HTC_HEADSET
 	tristate "HTC 2 Wire detection driver"
 	default n
@@ -1015,6 +1028,28 @@ config MSM_RPCSERVER_HANDSET
 	help
 	  Support for receiving handset events like headset detect,
 	  headset switch and clamshell state.
+
+config MSM_IGNORE_END_KEY
+        depends on MSM_RPCSERVER_HANDSET
+        default y
+        bool "Ignore power button's end key event"
+        help
+          Disable power button report end key event,
+          and change it to a power key event.
+
+config MSM_IGNORE_MEDIA_KEY
+	depends on MSM_RPCSERVER_HANDSET
+	default n
+	bool "Ignore headset media key event"
+	help
+	  Ignore headset media key event.
+
+config MSM_FIX_MEDIA_KEY
+	depends on MSM_RPCSERVER_HANDSET
+	default n
+	bool "Fix hs input hardware issue"
+	help 
+	   Fix hs input hardware issue
 
 config MSM_RMT_STORAGE_CLIENT
 	depends on (ARCH_MSM && MSM_ONCRPCROUTER)

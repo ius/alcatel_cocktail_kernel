@@ -14,3 +14,14 @@ config FB_MSM_LCDC
 	depends on FB_MSM && MSM_MDP31
 	default y
 
+
+config FIX_BOOTUP_BLINK
+	bool "Fix blink from bootloader to kernel with MDDI interface"
+	depends on FB_MSM && FB_MSM_MDDI
+	default n
+	
+config MDDI_HIMAX_24BIT_WORKROUND
+	bool "Fix mddi himax controller hibernate bug"
+	depends on FB_MSM && FB_MSM_MDDI && FB_MSM_MDDI_RY002Z
+	default n
+

@@ -2312,7 +2312,7 @@ config FB_MSM_MDDI_ORISE
 	bool
 	select FB_MSM_MDDI
 	default n
-
+	
 config FB_MSM_MDDI_QUICKVX
 	bool
 	select FB_MSM_MDDI
@@ -2591,6 +2591,12 @@ config FB_MSM_EBI2_TMD_QVGA_EPSON_QCIF
 	---help---
 	  Support for EBI2 TMD QVGA (240x320) and Epson QCIF (176x220) panel
 
+config FB_MSM_MDDI_RY002Z
+    bool "MDDI Seiko WVGA 480x800 Panel (ry002z)"
+	select FB_MSM_MDDI
+	---help---
+	 Support for MDDI Seiko WVGA 480x800 Panel
+
 config FB_MSM_PANEL_NONE
 	bool "NONE"
 	---help---
@@ -2653,6 +2659,17 @@ config FB_MSM_HDMI_ADV7520_PANEL
 	default n
         ---help---
         Support for LCDC 720p HDMI panel attached to ADV7520
+
+config FB_MSM_HDMI_TDA19988
+	depends on FB_MSM_MDP40 && FB_MSM_OVERLAY
+        bool "HDMI TDA19988 720p"
+        select FB_MSM_DTV
+        select FB_MSM_EXT_INTERFACE_COMMON
+	select FB_MSM_HDMI_COMMON
+	default n
+        ---help---
+        Support for 720p HDMI attached to TDA19988
+
 
 config FB_MSM_HDMI_ADV7520_PANEL_HDCP_SUPPORT
         depends on FB_MSM_HDMI_ADV7520_PANEL

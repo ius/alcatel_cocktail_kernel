@@ -1113,10 +1113,12 @@ static int __devinit msm_serial_hsl_probe(struct platform_device *pdev)
 	struct resource *gsbi_resource;
 	struct uart_port *port;
 	int ret;
-
+	printk(KERN_INFO "msm_serial_hsl: msm_serial_hsl_probe\n");
 	if (unlikely(pdev->id < 0 || pdev->id >= UART_NR))
+         {
+ 	        printk(KERN_INFO "msm_serial_hsl: return ENXIO\n");
 		return -ENXIO;
-
+         }
 	printk(KERN_INFO "msm_serial_hsl: detected port #%d\n", pdev->id);
 
 	port = get_port_from_line(pdev->id);
@@ -1144,6 +1146,13 @@ static int __devinit msm_serial_hsl_probe(struct platform_device *pdev)
 	if (unlikely(IS_ERR(msm_hsl_port->pclk))) {
 		printk(KERN_ERR "%s: Error getting pclk\n", __func__);
 		return PTR_ERR(msm_hsl_port->pclk);
+	}
+
+	/* Set up the MREG/NREG/DREG/MNDREG */
+	ret = clk_set_rate(msm_hsl_port->clk, 3686400);
+	if (ret) {
+		printk(KERN_WARNING "Error setting clock rate on UART\n");
+		return ret;
 	}
 
 	uart_resource = platform_get_resource_byname(pdev,
@@ -1284,9 +1293,11 @@ static int msm_serial_hsl_init(void)
 
 	ret = platform_driver_register(&msm_hsl_platform_driver);
 	if (unlikely(ret))
+           {
 		uart_unregister_driver(&msm_hsl_uart_driver);
-
-	printk(KERN_INFO "msm_serial_hsl: driver initialized\n");
+	        printk(KERN_INFO "msm_serial_hsl:uart_unregister_driver\n");
+           }
+	printk(KERN_INFO "msm_serial_hsl: driver initialized,ret=%d\n",ret);
 
 	return ret;
 }

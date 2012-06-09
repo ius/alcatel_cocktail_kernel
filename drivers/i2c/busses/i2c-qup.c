@@ -20,7 +20,7 @@
  *
  */
 
-/* #define DEBUG */
+//#define DEBUG 
 
 #include <linux/clk.h>
 #include <linux/err.h>
@@ -267,7 +267,7 @@ qup_i2c_poll_writeready(struct qup_i2c_dev *dev, int rem)
 {
 	uint32_t retries = 0;
 
-	while (retries != 2000) {
+	while (retries != 3000) {
 		uint32_t status = readl(dev->base + QUP_I2C_STATUS);
 
 		if (!(status & I2C_STATUS_WR_BUFFER_FULL)) {

@@ -50,4 +50,9 @@ obj-$(CONFIG_MSM_MEMORY_LOW_POWER_MODE_SUSPEND_DEEP_POWER_DOWN) \
 obj-$(CONFIG_PMIC8058_XOADC) += pmic8058-xoadc.o
 obj-$(CONFIG_PMIC8058_MISC) += pmic8058-misc.o
 obj-$(CONFIG_PMIC8058_BATTALARM) += pmic8058-batt-alarm.o
+obj-$(CONFIG_SENSORS_PN544)     += pn544.o
+obj-y += mpu3050/
+obj-$(CONFIG_PLSENSOR) += tmd2771.o
+obj-$(CONFIG_TORCH_SGM3140) += torch_flash.o
+obj-$(CONFIG_POWER_OFF_CHARGING) += power_off_charging.o
 obj-$(CONFIG_TZCOM) += tzcom.o

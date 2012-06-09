@@ -334,6 +334,7 @@ static struct clk_freq_tbl clk_tbl_sdac[] = {
 
 static struct clk_freq_tbl clk_tbl_tv[] = {
 	F_MND8(       0,  0,  0, GND,  1,  0,   0, NONE),
+	F_MND8(25200000, 23, 16, PLL4, 1,  5,  177, NOMINAL),//lxm add for 640x480  clock
 	F_MND8(27000000, 23, 16, PLL4, 2,  2,  33, NOMINAL),
 	F_MND8(74250000, 23, 16, PLL4, 2,  1,   6, NOMINAL),
 	F_END,

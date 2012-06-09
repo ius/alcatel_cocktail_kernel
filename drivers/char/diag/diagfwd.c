@@ -47,6 +47,14 @@ MODULE_DESCRIPTION("Diag Char Driver");
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION("1.0");
 
+//add by ping.wang for diag enable
+#define ENABLE  1
+#define DISABLE 0
+static unsigned short enable = ENABLE;
+module_param(enable, ushort, 0644);
+MODULE_PARM_DESC(enable, "diag cmd enable : 1=enabled / 0=disabled" );
+//end
+
 int diag_debug_buf_idx;
 unsigned char diag_debug_buf[1024];
 static unsigned int buf_tbl_size = 8; /*Number of entries in table of buffers */
@@ -765,6 +773,17 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 	subsys_cmd_code = *(uint16_t *)temp;
 	temp += 2;
 
+	/* added by ping.wang for diag disable */		
+        /* if the DIAG is disabled and we receive the lock/unlock command, then forward */
+        /* the lock/unlock command prefix is 75 111 = 0x4B 0x6F see jrd_diag.c */
+       if ( enable == DISABLE &&  !(cmd_code == 0x4B && subsys_id == 0x6F) ) {
+            return 0;
+        }
+#ifdef DIAG_DEBUG
+         printk(KERN_DEBUG "diag: cmd_code = 0x%X, subsys_id = %X subsys_cmd = %X\n", cmd_code, subsys_id,subsys_cmd_code);
+#endif
+	/* added end by ping.wang */
+	
 	for (i = 0; i < diag_max_registration; i++) {
 		if (driver->table[i].process_id != 0) {
 			if (driver->table[i].cmd_code ==

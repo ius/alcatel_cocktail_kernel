@@ -306,6 +306,8 @@ static int msm_device_info(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+int jrd_fm_status = 0;
+
 static int msm_device_put(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
@@ -360,6 +362,11 @@ static int msm_device_put(struct snd_kcontrol *kcontrol,
 			/* Event to notify client for device info */
 			broadcast_event(AUDDEV_EVT_DEVICE_INFO,
 					route_cfg.dev_id, SESSION_IGNORE);
+                        if (route_cfg.dev_id == 24 || route_cfg.dev_id == 27)
+                        {
+                            jrd_fm_status = 1;
+	                    //MM_INFO("==== open fm=====\n");
+                        }
 		}
 	} else {
 		if (dev_info->opened) {
@@ -377,6 +384,11 @@ static int msm_device_put(struct snd_kcontrol *kcontrol,
 					SESSION_IGNORE);
 			}
 		}
+                if (route_cfg.dev_id == 24 || route_cfg.dev_id == 27)
+                {
+                    jrd_fm_status = 0;
+	            //MM_INFO("==== close fm=====\n");
+                }
 
 	}
 	return rc;

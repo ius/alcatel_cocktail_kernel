@@ -44,7 +44,9 @@
 #include "mdp4.h"
 #endif
 
-uint32 mdp4_extn_disp;
+uint32 mdp4_extn_disp = 0;
+uint32 mdp4_mddi_high_clk = 0;
+
 static struct clk *mdp_clk;
 static struct clk *mdp_pclk;
 int mdp_rev;
@@ -55,7 +57,9 @@ struct completion mdp_ppp_comp;
 struct semaphore mdp_ppp_mutex;
 struct semaphore mdp_pipe_ctrl_mutex;
 
-unsigned long mdp_timer_duration = (HZ/20);   /* 50 msecond */
+//modify by cd_hwfu ,for lcd tearing,shouldn't turn off mdp power so quick.
+unsigned long mdp_timer_duration = (HZ);   /* 1 second */
+//end
 
 boolean mdp_ppp_waiting = FALSE;
 uint32 mdp_tv_underflow_cnt;
@@ -1496,6 +1500,7 @@ static int mdp_probe(struct platform_device *pdev)
 
 	pdev_list[pdev_list_cnt++] = pdev;
 	mdp4_extn_disp = 0;
+	mdp4_mddi_high_clk = 0;
 	return 0;
 
       mdp_probe_err:

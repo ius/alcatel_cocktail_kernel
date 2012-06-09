@@ -34,14 +34,19 @@
 #include <linux/fb.h>
 
 #include <asm/fb.h>
+#ifdef CONFIG_FIX_BOOTUP_BLINK 
+#include "msm/msm_fb.h"
+#endif
 
+#ifdef CONFIG_FIX_BOOTUP_BLINK 
+extern int msmfb_bootup; 
+#endif
 
     /*
      *  Frame buffer device initialization and setup routines
      */
 
 #define FBPIXMAPSIZE	(1024 * 8)
-
 struct fb_info *registered_fb[FB_MAX] __read_mostly;
 int num_registered_fb __read_mostly;
 
@@ -956,7 +961,9 @@ fb_set_var(struct fb_info *info, struct fb_var_screeninfo *var)
 		if ((var->activate & FB_ACTIVATE_MASK) == FB_ACTIVATE_NOW) {
 			struct fb_var_screeninfo old_var;
 			struct fb_videomode mode;
-
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+			struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
+#endif
 			if (info->fbops->fb_get_caps) {
 				ret = fb_check_caps(info, var, activate);
 
@@ -978,6 +985,13 @@ fb_set_var(struct fb_info *info, struct fb_var_screeninfo *var)
 					goto done;
 				}
 			}
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+                        //lxm fix ts bug,only fb0 should bypass
+                        if ((activate ==0) && (!msmfb_bootup) && mfd->index == 0){
+                            printk(KERN_INFO " not redraw panel for this time\n");
+                        }
+                        else
+#endif
 
 			fb_pan_display(info, &info->var);
 			fb_set_cmap(&info->cmap, info);

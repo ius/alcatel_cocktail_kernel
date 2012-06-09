@@ -306,4 +306,13 @@ static inline int msmsdcc_lpm_disable(struct mmc_host *mmc)
 }
 #endif
 
+/*ljm sys debug interface*/
+struct msm_sdcc_sys_debug_struct {
+	unsigned int value;
+//	void (* issuefn)();
+	void (* issuefn)( struct mmc_host *mmc);
+	char *description;
+};
+
+
 #endif

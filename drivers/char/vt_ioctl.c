@@ -1729,9 +1729,10 @@ void change_console(struct vc_data *new_vc)
 	complete_change_console(new_vc);
 }
 
-/* Perform a kernel triggered VT switch for suspend/resume */
-
-static int disable_vt_switch;
+/* Perform a kernel triggered VT switch for suspend/resume,
+default set to 1.if want to change its value,we'd better call pm_set_vt_switch()
+*/
+static int disable_vt_switch = 1;
 
 int vt_move_to_console(unsigned int vt, int alloc)
 {

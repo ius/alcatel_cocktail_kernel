@@ -11,4 +11,7 @@ mmc_block-objs			:= block.o queue.o
 obj-$(CONFIG_MMC_TEST)		+= mmc_test.o
 
 obj-$(CONFIG_SDIO_UART)		+= sdio_uart.o
-
+#Add for crash dump, slhuang
+ifdef CONFIG_MACH_MSM7X30_COCKTAIL
+obj-y 			   += crash_dump.o
+endif

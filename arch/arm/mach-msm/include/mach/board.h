@@ -28,7 +28,9 @@
 #endif
 
 #include <asm/clkdev.h>
-
+#ifndef FIXED_CAMIF_RECOVERY
+#define FIXED_CAMIF_RECOVERY
+#endif
 /* platform device data structures */
 struct msm_acpu_clock_platform_data {
 	uint32_t acpu_switch_time_us;
@@ -49,6 +51,10 @@ struct msm_camera_io_ext {
 	uint32_t csiphy;
 	uint32_t csisz;
 	uint32_t csiirq;
+#ifdef FIXED_CAMIF_RECOVERY
+	uint32_t clkctl;
+	uint32_t clkctlsz;
+#endif
 };
 
 struct msm_camera_io_clk {
