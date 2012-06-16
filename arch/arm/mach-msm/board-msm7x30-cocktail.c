@@ -4518,33 +4518,24 @@ static struct resource kgsl_3d0_resources[] = {
 };
 
 static struct kgsl_device_platform_data kgsl_3d0_pdata = {
-	.pwr_data = {
-		.pwrlevel = {
-			{
-				.gpu_freq = 245760000,
-				.bus_freq = 192000000,
-			},
-			{
-				.gpu_freq = 192000000,
-				.bus_freq = 0,
-			},
+	.pwrlevel = {
+		{
+			.gpu_freq = 245760000,
+			.bus_freq = 192000000,
 		},
-		.init_level = 0,
-		.num_levels = 2,
-		.set_grp_async = set_grp3d_async,
-		.idle_timeout = HZ/20,
-		.nap_allowed = true,
-	},
-	.clk = {
-		.name = {
-			.clk = "grp_clk",
-			.pclk = "grp_pclk",
+		{
+			.gpu_freq = 192000000,
+			.bus_freq = 0,
 		},
 	},
-	.imem_clk_name = {
-		.clk = "imem_clk",
-		.pclk = NULL,
-	},
+	.init_level = 0,
+	.num_levels = 2,
+	.set_grp_async = set_grp3d_async,
+	.idle_timeout = HZ/20,
+	.nap_allowed = true,
+	.idle_needed = true,
+	.clk_map = KGSL_CLK_SRC | KGSL_CLK_CORE_3D |
+		KGSL_CLK_IFACE_3D | KGSL_CLK_MEM,
 };
 
 static struct platform_device msm_kgsl_3d0 = {
@@ -4574,26 +4565,20 @@ static struct resource kgsl_2d0_resources[] = {
 };
 
 static struct kgsl_device_platform_data kgsl_2d0_pdata = {
-	.pwr_data = {
-		.pwrlevel = {
-			{
-				.gpu_freq = 0,
-				.bus_freq = 192000000,
-			},
-		},
-		.init_level = 0,
-		.num_levels = 1,
-		/* HW workaround, run Z180 SYNC @ 192 MHZ */
-		.set_grp_async = NULL,
-		.idle_timeout = HZ/10,
-		.nap_allowed = true,
-	},
-	.clk = {
-		.name = {
-			.clk = "grp_2d_clk",
-			.pclk = "grp_2d_pclk",
+	.pwrlevel = {
+		{
+			.gpu_freq = 0,
+			.bus_freq = 192000000,
 		},
 	},
+	.init_level = 0,
+	.num_levels = 1,
+	/* HW workaround, run Z180 SYNC @ 192 MHZ */
+	.set_grp_async = NULL,
+	.idle_timeout = HZ/10,
+	.nap_allowed = true,
+	.idle_needed = true,
+	.clk_map = KGSL_CLK_CORE_2D | KGSL_CLK_IFACE_2D,
 };
 
 static struct platform_device msm_kgsl_2d0 = {

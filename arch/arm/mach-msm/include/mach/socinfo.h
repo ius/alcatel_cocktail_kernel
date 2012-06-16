@@ -136,6 +136,11 @@ static inline int cpu_is_msm8x60(void)
 	return cpu == MSM_CPU_8X60;
 }
 
+static inline int cpu_is_msm8930(void)
+{
+	return 0;
+}
+
 static inline int cpu_is_msm8960(void)
 {
 	enum msm_cpu cpu = socinfo_get_msm_cpu();
