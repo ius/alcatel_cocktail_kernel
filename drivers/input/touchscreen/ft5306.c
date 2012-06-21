@@ -99,16 +99,6 @@ module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 #endif
 #define POINT_DATA_LENGTH		6
 
-
-#define REPORT_TP(a, b) { \
-	input_report_abs(a->input, ABS_MT_TRACKING_ID, b.touch_id); \
-	input_report_abs(a->input, ABS_MT_TOUCH_MAJOR, b.pressed); \
-	input_report_abs(a->input, ABS_MT_POSITION_X, b.x); \
-	input_report_abs(a->input, ABS_MT_POSITION_Y, b.y); \
-	input_mt_sync(a->input); \
-}
-
-
 struct point_data {
 	u16 x;
 	u16 y;
@@ -309,8 +299,8 @@ static void work_func(struct work_struct *work)
 	}
 
 	for(i = 0; i < data->last_total_tp; i++) {
-
-		if (data->points[i].y > KEY_Y_TOP) {	/*pressed on the key area*/
+		/* Handling of virtual key area */
+		if (data->points[i].y > KEY_Y_TOP) {
 			if (data->points[i].touch_event == TOUCH_DOWN)
 			{
 				report_key(data, data->points[i].x, EVENT_DOWN);
@@ -322,29 +312,26 @@ static void work_func(struct work_struct *work)
 				normal_key=0;
 			}
 
-		}
-		if (data->points[i].touch_event == TOUCH_DOWN || data->points[i].touch_event == HOLD)
-			data->points[i].pressed = EVENT_DOWN;
-		else if(data->points[i].touch_event == TOUCH_UP)
-		{
-			data->points[i].pressed = EVENT_UP;
+		} else {
+			if (data->points[i].touch_event == TOUCH_DOWN || data->points[i].touch_event == HOLD) {
+				data->points[i].pressed = EVENT_DOWN;
+				input_report_abs(data->input, ABS_MT_TRACKING_ID, data->points[i].touch_id);
+				input_report_abs(data->input, ABS_MT_POSITION_X, data->points[i].x);
+				input_report_abs(data->input, ABS_MT_POSITION_Y, data->points[i].y);
+			} else if(data->points[i].touch_event == TOUCH_UP) {
+				data->points[i].pressed = EVENT_UP;
 		
-			if(normal_key)
-			{	
-				//KEY_DOWN  AND   TOUCH_UP
-				ft5306_release_old_key(data->input);
-				normal_key=0;
+				if(normal_key)
+				{
+					//KEY_DOWN AND TOUCH_UP
+					ft5306_release_old_key(data->input);
+					normal_key=0;
+				}
 			}
 		}
-		REPORT_TP(data, data->points[i]);
-
-		pr_ft5306(DEBUG, "\n");
-		pr_ft5306(DEBUG, "ABS_MT_TRACKING_ID: %d\n", data->points[i].touch_id); \
-		pr_ft5306(DEBUG, "ABS_MT_TRACKING_MAJOR: %d\n", data->points[i].pressed); \
-		pr_ft5306(DEBUG, "ABS_MT_POSITION_X: %d\n", data->points[i].x); \
-		pr_ft5306(DEBUG, "ABS_MT_POSITION_Y: %d\n", data->points[i].y); \
 	}
 
+	input_mt_sync(data->input);
 	input_sync(data->input);
 
 	data->last_total_tp = data->total_tp;	/*Record previous total pressed points*/
