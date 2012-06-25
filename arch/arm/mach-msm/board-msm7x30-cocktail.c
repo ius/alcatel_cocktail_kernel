@@ -859,26 +859,11 @@ static struct pmic8058_vibrator_pdata pmic_vib_pdata = {
 
 
 static struct pmic8058_led pmic8058_ffa_leds[] = {
-#ifdef CONFIG_MACH_MSM7X30_COCKTAIL
-	[0] = {
-		.name		= "keyboard-backlight",
+	{
+		.name		= "button-backlight",
 		.max_brightness = 15,
 		.id		= PMIC8058_ID_LED_KB_LIGHT,
 	},
-/*	
-        [1] = {
-	        .name		="charger-led",
-		.max_brightness =20,
-		.id             =PMIC8058_ID_LED_0,
-	},
-*/
-#else
-	[0] = {
-		.name		= "keyboard-backlight",
-		.max_brightness = 15,
-		.id		= PMIC8058_ID_LED_KB_LIGHT,
-	},
-  #endif	
 };
 
 static struct pmic8058_leds_platform_data pm8058_ffa_leds_data = {
