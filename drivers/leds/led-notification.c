@@ -296,6 +296,11 @@ static struct device_attribute led_notification_attrs[] = {
         __ATTR_NULL,
 };
 
+static void led_notification_brightness_set(struct led_classdev *led_cdev,
+						enum led_brightness brightness)
+{
+}
+
 static int led_notification_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -322,7 +327,7 @@ static int led_notification_probe(struct platform_device *pdev)
 	led_notif_info.duty = PWM_DUTY_OFF;
 	led_notif_info.period = PWM_PERIOD_OFF;
 	led_notif_info.led_notification_dev.name = pdev->name;
-	led_notif_info.led_notification_dev.brightness_set = NULL;
+	led_notif_info.led_notification_dev.brightness_set = led_notification_brightness_set;
 	led_notif_info.mode = led_notif_info.led_notification_dev.brightness = 1;
 	ret = led_classdev_register(&pdev->dev, &led_notif_info.led_notification_dev);
 	if (ret < 0) {
