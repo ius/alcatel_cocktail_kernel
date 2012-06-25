@@ -318,9 +318,13 @@ static void work_func(struct work_struct *work)
 				input_report_abs(data->input, ABS_MT_TRACKING_ID, data->points[i].touch_id);
 				input_report_abs(data->input, ABS_MT_POSITION_X, data->points[i].x);
 				input_report_abs(data->input, ABS_MT_POSITION_Y, data->points[i].y);
+				input_report_key(data->input, BTN_TOUCH, 1);
 			} else if(data->points[i].touch_event == TOUCH_UP) {
 				data->points[i].pressed = EVENT_UP;
-		
+
+				input_report_abs(data->input, ABS_MT_TRACKING_ID, data->points[i].touch_id);
+				input_report_key(data->input, BTN_TOUCH, 0);
+
 				if(normal_key)
 				{
 					//KEY_DOWN AND TOUCH_UP
@@ -328,10 +332,11 @@ static void work_func(struct work_struct *work)
 					normal_key=0;
 				}
 			}
+
+			input_mt_sync(data->input);
 		}
 	}
 
-	input_mt_sync(data->input);
 	input_sync(data->input);
 
 	data->last_total_tp = data->total_tp;	/*Record previous total pressed points*/
@@ -444,19 +449,17 @@ static int __devinit ft5306_probe(struct i2c_client *client,
 	data->input->evbit[0] = BIT_MASK(EV_ABS) | BIT_MASK(EV_KEY);
 	data->input->absbit[0] = BIT_MASK(ABS_MT_POSITION_X) | \
 				 BIT_MASK(ABS_MT_POSITION_Y) | \
-				 BIT_MASK(ABS_MT_TOUCH_MAJOR) | \
 				 BIT_MASK(ABS_MT_TRACKING_ID);
 	set_bit(KEY_MENU, data->input->keybit);
 	set_bit(KEY_BACK, data->input->keybit);
 	set_bit(KEY_HOME, data->input->keybit);
 	set_bit(KEY_SEARCH, data->input->keybit);
 	set_bit(KEY_UNKNOWN,data->input->keybit);
+	set_bit(BTN_TOUCH, data->input->keybit);
 
 	input_set_abs_params(data->input, ABS_MT_POSITION_X, MIN_X,
 					MAX_X, 0, 0);
 	input_set_abs_params(data->input, ABS_MT_POSITION_Y, MIN_Y, MAX_Y, 0, 0);
-	input_set_abs_params(data->input, ABS_MT_TOUCH_MAJOR, 0,
-					1, 0, 0);
 	input_set_abs_params(data->input, ABS_MT_TRACKING_ID, 0, 
 					MAX_TOUCH_POINTS, 0, 0);
 
