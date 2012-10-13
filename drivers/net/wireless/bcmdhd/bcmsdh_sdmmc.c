@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmsdh_sdmmc.c 282820 2011-09-09 15:40:35Z $
+ * $Id: bcmsdh_sdmmc.c 309549 2012-01-20 01:13:15Z $
  */
 #include <typedefs.h>
 
@@ -448,6 +448,7 @@ sdioh_iovar_op(sdioh_info_t *si, const char *name,
 		bcopy(params, &int_val, sizeof(int_val));
 
 	bool_val = (int_val != 0) ? TRUE : FALSE;
+	BCM_REFERENCE(bool_val);
 
 	actionid = set ? IOV_SVAL(vi->varid) : IOV_GVAL(vi->varid);
 	switch (actionid) {
@@ -682,10 +683,10 @@ sdioh_enable_hw_oob_intr(sdioh_info_t *sd, bool enable)
 	else
 		data = SDIO_SEPINT_ACT_HI;	/* disable hw oob interrupt */
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
+#if 1 && LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
 	/* Needed for Android Linux Kernel 2.6.35 */
 	data |= SDIO_SEPINT_ACT_HI; 		/* Active HIGH */
-#endif
+#endif /* OEM_ANDROID */
 
 	status = sdioh_request_byte(sd, SDIOH_WRITE, 0, SDIOD_CCCR_BRCM_SEPINT, &data);
 	return status;
@@ -1002,11 +1003,11 @@ sdioh_request_buffer(sdioh_info_t *sd, uint pio_dma, uint fix_inc, uint write, u
 	if (pkt == NULL) {
 		sd_data(("%s: Creating new %s Packet, len=%d\n",
 		         __FUNCTION__, write ? "TX" : "RX", buflen_u));
-#ifdef DHD_USE_STATIC_BUF
+#ifdef CONFIG_DHD_USE_STATIC_BUF
 		if (!(mypkt = PKTGET_STATIC(sd->osh, buflen_u, write ? TRUE : FALSE))) {
 #else
 		if (!(mypkt = PKTGET(sd->osh, buflen_u, write ? TRUE : FALSE))) {
-#endif /* DHD_USE_STATIC_BUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF */
 			sd_err(("%s: PKTGET failed: len %d\n",
 			           __FUNCTION__, buflen_u));
 			return SDIOH_API_RC_FAIL;
@@ -1023,11 +1024,11 @@ sdioh_request_buffer(sdioh_info_t *sd, uint pio_dma, uint fix_inc, uint write, u
 		if (!write) {
 			bcopy(PKTDATA(sd->osh, mypkt), buffer, buflen_u);
 		}
-#ifdef DHD_USE_STATIC_BUF
+#ifdef CONFIG_DHD_USE_STATIC_BUF
 		PKTFREE_STATIC(sd->osh, mypkt, write ? TRUE : FALSE);
 #else
 		PKTFREE(sd->osh, mypkt, write ? TRUE : FALSE);
-#endif /* DHD_USE_STATIC_BUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF */
 	} else if (((uint32)(PKTDATA(sd->osh, pkt)) & DMA_ALIGN_MASK) != 0) {
 		/* Case 2: We have a packet, but it is unaligned. */
 
@@ -1036,11 +1037,11 @@ sdioh_request_buffer(sdioh_info_t *sd, uint pio_dma, uint fix_inc, uint write, u
 
 		sd_data(("%s: Creating aligned %s Packet, len=%d\n",
 		         __FUNCTION__, write ? "TX" : "RX", PKTLEN(sd->osh, pkt)));
-#ifdef DHD_USE_STATIC_BUF
+#ifdef CONFIG_DHD_USE_STATIC_BUF
 		if (!(mypkt = PKTGET_STATIC(sd->osh, PKTLEN(sd->osh, pkt), write ? TRUE : FALSE))) {
 #else
 		if (!(mypkt = PKTGET(sd->osh, PKTLEN(sd->osh, pkt), write ? TRUE : FALSE))) {
-#endif /* DHD_USE_STATIC_BUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF */
 			sd_err(("%s: PKTGET failed: len %d\n",
 			           __FUNCTION__, PKTLEN(sd->osh, pkt)));
 			return SDIOH_API_RC_FAIL;
@@ -1061,11 +1062,11 @@ sdioh_request_buffer(sdioh_info_t *sd, uint pio_dma, uint fix_inc, uint write, u
 			      PKTDATA(sd->osh, pkt),
 			      PKTLEN(sd->osh, mypkt));
 		}
-#ifdef DHD_USE_STATIC_BUF
+#ifdef CONFIG_DHD_USE_STATIC_BUF
 		PKTFREE_STATIC(sd->osh, mypkt, write ? TRUE : FALSE);
 #else
 		PKTFREE(sd->osh, mypkt, write ? TRUE : FALSE);
-#endif /* DHD_USE_STATIC_BUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF */
 	} else { /* case 3: We have a packet and it is aligned. */
 		sd_data(("%s: Aligned %s Packet, direct DMA\n",
 		         __FUNCTION__, write ? "Tx" : "Rx"));
@@ -1179,6 +1180,7 @@ static void IRQHandlerF2(struct sdio_func *func)
 	sd = gInstance->sd;
 
 	ASSERT(sd != NULL);
+	BCM_REFERENCE(sd);
 }
 #endif /* !defined(OOB_INTR_ONLY) */
 
@@ -1230,8 +1232,10 @@ sdioh_start(sdioh_info_t *si, int stage)
 		   2.6.27. The implementation prior to that is buggy, and needs broadcom's
 		   patch for it
 		*/
-		if ((ret = sdio_reset_comm(gInstance->func[0]->card)))
+		if ((ret = sdio_reset_comm(gInstance->func[0]->card))) {
 			sd_err(("%s Failed, error = %d\n", __FUNCTION__, ret));
+			return ret;
+		}
 		else {
 			sd->num_funcs = 2;
 			sd->sd_blockmode = TRUE;
@@ -1317,4 +1321,29 @@ int
 sdioh_waitlockfree(sdioh_info_t *sd)
 {
 	return (1);
+}
+
+
+SDIOH_API_RC
+sdioh_gpioouten(sdioh_info_t *sd, uint32 gpio)
+{
+	return SDIOH_API_RC_FAIL;
+}
+
+SDIOH_API_RC
+sdioh_gpioout(sdioh_info_t *sd, uint32 gpio, bool enab)
+{
+	return SDIOH_API_RC_FAIL;
+}
+
+bool
+sdioh_gpioin(sdioh_info_t *sd, uint32 gpio)
+{
+	return FALSE;
+}
+
+SDIOH_API_RC
+sdioh_gpio_init(sdioh_info_t *sd)
+{
+	return SDIOH_API_RC_FAIL;
 }

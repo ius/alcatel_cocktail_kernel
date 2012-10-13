@@ -1254,13 +1254,20 @@ static int msm_rotator_start(unsigned long arg, int pid)
 		*(msm_rotator_dev->img_info[first_free_index]) = info;
 		msm_rotator_dev->pid_list[first_free_index] = pid;
 
-		if (copy_to_user((void __user *)arg, &info, sizeof(info)))
-			rc = -EFAULT;
+                //delete by leiming pr 271724 start
+		// if (copy_to_user((void __user *)arg, &info, sizeof(info)))
+		// 	rc = -EFAULT;
+                //delete by leiming pr 271724 end
 	} else if (s == MAX_SESSIONS) {
 		dev_dbg(msm_rotator_dev->device, "%s: all sessions in use\n",
 			__func__);
 		rc = -EBUSY;
 	}
+
+        //add by leiming pr 271724 start
+        if (copy_to_user((void __user *)arg, &info, sizeof(info)))
+                rc = -EFAULT;
+        //add by leiming pr 271724 end
 
 rotator_start_exit:
 	mutex_unlock(&msm_rotator_dev->rotator_lock);

@@ -169,6 +169,7 @@ mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 	struct scatterlist *sg;
 #endif
 
+
 	pr_debug("%s: starting CMD%u arg %08x flags %08x\n",
 		 mmc_hostname(host), mrq->cmd->opcode,
 		 mrq->cmd->arg, mrq->cmd->flags);
@@ -2008,7 +2009,9 @@ int mmc_resume_host(struct mmc_host *host)
 			err = 0;
 		}
 	}
+#ifndef CONFIG_BCMDHD
 	host->pm_flags &= ~MMC_PM_KEEP_POWER;
+#endif
 	mmc_bus_put(host);
 
 	return err;

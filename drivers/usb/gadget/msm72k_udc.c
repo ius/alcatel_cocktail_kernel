@@ -60,7 +60,6 @@ static const char driver_name[] = "msm72k_udc";
 
 #define SETUP_BUF_SIZE     8
 
-
 static const char *const ep_name[] = {
 	"ep0out", "ep1out", "ep2out", "ep3out",
 	"ep4out", "ep5out", "ep6out", "ep7out",
@@ -223,7 +222,32 @@ struct usb_info {
 	enum usb_device_state usb_state;
 	struct wake_lock	wlock;
 };
+//add by yongsheng.lei@jrdcom.com pr242892 start
+#define ADD_SWITCH_DEVICE	1	/*used for report charger in&out uevent to user space*/
+#define JRD_SDEV_DRIVER_NAME	"JRD_CHARGER"
+#define FALSE	0
+#define	TRUE 	1
 
+#if ADD_SWITCH_DEVICE
+static bool ac_in_flag = FALSE;
+
+static ssize_t jrd_print_switch_name(struct switch_dev *sdev, char *buf)
+{
+	return sprintf(buf, "%s\n", JRD_SDEV_DRIVER_NAME);
+}
+
+static ssize_t jrd_print_switch_state(struct switch_dev *sdev, char *buf)
+{
+	return sprintf(buf, "%s\n", (ac_in_flag ? "online" : "offline"));
+}
+
+static struct switch_dev jrd_charger_sdev = {
+	.name = JRD_SDEV_DRIVER_NAME,
+	.print_name = jrd_print_switch_name,
+	.print_state = jrd_print_switch_state,
+};
+#endif
+//add by yongsheng.lei@jrdcom.com pr242892 end
 static const struct usb_ep_ops msm72k_ep_ops;
 static struct usb_info *the_usb_info;
 
@@ -296,7 +320,8 @@ static inline enum chg_type usb_get_chg_type(struct usb_info *ui)
 		return USB_CHG_TYPE__SDP;
 }
 
-#define USB_WALLCHARGER_CHG_CURRENT 1800
+#define USB_WALLCHARGER_CHG_CURRENT 600
+#define USB_SDPCHARGER_CHG_CURRENT 500
 static int usb_get_max_power(struct usb_info *ui)
 {
 	struct msm_otg *otg = to_msm_otg(ui->xceiv);
@@ -321,6 +346,8 @@ static int usb_get_max_power(struct usb_info *ui)
 
 	if (temp == USB_CHG_TYPE__WALLCHARGER)
 		return USB_WALLCHARGER_CHG_CURRENT;
+	else if (temp == USB_CHG_TYPE__SDP)
+		return USB_SDPCHARGER_CHG_CURRENT;
 
 	if (suspended || !configured)
 		return 0;
@@ -1559,7 +1586,14 @@ static void usb_do_work(struct work_struct *w)
 
 				dev_dbg(&ui->pdev->dev,
 					"msm72k_udc: ONLINE -> OFFLINE\n");
-
+			#if ADD_SWITCH_DEVICE
+				if(ac_in_flag)
+					{
+					ac_in_flag = FALSE;	/*AC or USB charger removed*/
+					switch_set_state(&jrd_charger_sdev, ac_in_flag);
+				printk(KERN_INFO "AC or USB charger removed now!\n");
+					}
+			#endif
 				atomic_set(&ui->running, 0);
 				atomic_set(&ui->remote_wakeup, 0);
 				atomic_set(&ui->configured, 0);
@@ -1661,7 +1695,14 @@ static void usb_do_work(struct work_struct *w)
 				pm_runtime_resume(&ui->pdev->dev);
 				dev_dbg(&ui->pdev->dev,
 					"msm72k_udc: OFFLINE -> ONLINE\n");
-
+			#if ADD_SWITCH_DEVICE
+				if(!ac_in_flag)
+				{
+					ac_in_flag = TRUE;		/*AC or USB charger pluggedd in*/
+					switch_set_state(&jrd_charger_sdev, ac_in_flag);
+					printk(KERN_INFO "AC or USB charger plugged in now !\n");
+				}
+			#endif
 				usb_reset(ui);
 				ui->state = USB_STATE_ONLINE;
 				usb_do_work_check_vbus(ui);
@@ -2293,8 +2334,11 @@ static int msm72k_pullup_internal(struct usb_gadget *_gadget, int is_active)
 static int msm72k_pullup(struct usb_gadget *_gadget, int is_active)
 {
 	struct usb_info *ui = container_of(_gadget, struct usb_info, gadget);
+	struct msm_otg *otg = to_msm_otg(ui->xceiv);
 	unsigned long flags;
 
+	if (atomic_read(&otg->chg_type) == USB_CHG_TYPE__WALLCHARGER)
+		return 0;
 
 	atomic_set(&ui->softconnect, is_active);
 
@@ -2307,8 +2351,9 @@ static int msm72k_pullup(struct usb_gadget *_gadget, int is_active)
 
 	msm72k_pullup_internal(_gadget, is_active);
 
-	if (is_active && !ui->gadget.is_a_peripheral)
+	if (is_active && !ui->gadget.is_a_peripheral){
 		schedule_delayed_work(&ui->chg_det, USB_CHG_DET_DELAY);
+	}
 
 	return 0;
 }
@@ -2592,7 +2637,15 @@ static int msm72k_probe(struct platform_device *pdev)
 	retval = switch_dev_register(&ui->sdev);
 	if (retval)
 		return usb_free(ui, retval);
-
+#if ADD_SWITCH_DEVICE
+	retval = switch_dev_register(&jrd_charger_sdev);
+	if (retval)
+		{
+		printk(KERN_ERR "register jrd_charger_sdev fail !\n");
+		return usb_free(ui, retval);
+		}
+	printk(KERN_INFO "register jrd_charger_sdev success!\n");
+#endif
 	the_usb_info = ui;
 
 	wake_lock_init(&ui->wlock,
@@ -2617,6 +2670,10 @@ static int msm72k_probe(struct platform_device *pdev)
 			"%s: Cannot bind the transceiver, retval:(%d)\n",
 			__func__, retval);
 		switch_dev_unregister(&ui->sdev);
+	#if ADD_SWITCH_DEVICE
+		switch_dev_unregister(&jrd_charger_sdev);
+		printk(KERN_INFO "unregister jrd_charger_sdev now!\n");
+	#endif
 		wake_lock_destroy(&ui->wlock);
 		return usb_free(ui, retval);
 	}
@@ -2734,6 +2791,10 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 	dev->state = USB_STATE_IDLE;
 	atomic_set(&dev->configured, 0);
 	switch_set_state(&dev->sdev, 0);
+#if ADD_SWITCH_DEVICE
+	switch_set_state(&jrd_charger_sdev, 0);
+	printk(KERN_INFO "send jrd_charger_sdev uevent=0 \n");
+#endif
 	/* cancel pending ep0 transactions */
 	flush_endpoint(&dev->ep0out);
 	flush_endpoint(&dev->ep0in);

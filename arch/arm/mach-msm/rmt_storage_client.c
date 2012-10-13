@@ -936,6 +936,10 @@ static int rmt_storage_release(struct inode *ip, struct file *fp)
 	return 0;
 }
 
+//import, Zou Haiping
+extern wait_queue_head_t modem_sync_head;
+extern int sync_rq;
+
 static long rmt_storage_ioctl(struct file *fp, unsigned int cmd,
 			    unsigned long arg)
 {
@@ -1036,6 +1040,14 @@ static long rmt_storage_ioctl(struct file *fp, unsigned int cmd,
 				__func__, ret);
 		if (atomic_dec_return(&rmc->wcount) == 0)
 			wake_unlock(&rmc->wlock);
+
+         //Clear force sync count and continue shutdown thread, Zou Haiping
+		if (sync_rq > 0 && !ret){
+		    sync_rq = 0;
+		    if (waitqueue_active(&modem_sync_head))
+				wake_up(&modem_sync_head);
+		}
+		
 		break;
 
 	default:
@@ -1321,6 +1333,9 @@ show_force_sync(struct device *dev, struct device_attribute *attr,
 		       rpc_pdev->prog);
 		return -EINVAL;
 	}
+
+    //Force sync count, Zou Haiping
+	sync_rq++;
 
 	return rmt_storage_force_sync(srv->rpc_client);
 }

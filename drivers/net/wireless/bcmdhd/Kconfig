@@ -13,7 +13,7 @@ config BCMDHD
 config BCMDHD_FW_PATH
 	depends on BCMDHD
 	string "Firmware path"
-	default "/system/etc/firmware/fw_bcmdhd.bin"
+	default "/system/etc/wifi/firmware/fw_bcmdhd.bin"
 	---help---
 	  Path to the firmware file.
 

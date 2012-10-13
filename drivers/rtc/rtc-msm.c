@@ -28,6 +28,21 @@
 #include <linux/msm_rpcrouter.h>
 #include <mach/msm_rpcrouter.h>
 
+enum rtc_alarm {
+	PM_RTC_ALARM_1,
+};
+
+extern void msm_pm_set_max_sleep_time(int64_t sleep_time_ns);
+extern int pmic_rtc_start(struct rtc_time *time);
+extern int pmic_rtc_stop(void);
+extern int pmic_rtc_get_time(struct rtc_time *time);
+extern int pmic_rtc_enable_alarm(enum rtc_alarm alarm,
+				struct rtc_time *time);
+extern int pmic_rtc_disable_alarm(enum rtc_alarm alarm);
+extern int pmic_rtc_get_alarm_time(enum rtc_alarm alarm,
+				struct rtc_time *time);
+extern int pmic_rtc_get_alarm_status(uint *status);
+
 #define APP_TIMEREMOTE_PDEV_NAME "rs00000000"
 
 #define TIMEREMOTE_PROCEEDURE_SET_JULIAN	6
@@ -292,6 +307,7 @@ static int
 msmrtc_timeremote_set_time(struct device *dev, struct rtc_time *tm)
 {
 	int rc;
+	unsigned long rtc_time;
 	struct rtc_tod_args rtc_args;
 	struct msm_rtc *rtc_pdata = dev_get_drvdata(dev);
 
@@ -307,6 +323,7 @@ msmrtc_timeremote_set_time(struct device *dev, struct rtc_time *tm)
 
 	rtc_args.proc = TIMEREMOTE_PROCEEDURE_SET_JULIAN;
 	rtc_args.tm = tm;
+	rtc_time = 0;
 	rc = msm_rpc_client_req(rtc_pdata->rpc_client,
 				TIMEREMOTE_PROCEEDURE_SET_JULIAN,
 				msmrtc_tod_proc_args, &rtc_args,
@@ -316,18 +333,81 @@ msmrtc_timeremote_set_time(struct device *dev, struct rtc_time *tm)
 		return rc;
 	}
 
+#ifdef CONFIG_MACH_MSM7X30_COCKTAIL
+	tm->tm_year -= 1900;
+	rtc_tm_to_time(tm, &rtc_time);
+
+	if (pmic_rtc_start((struct rtc_time *)&rtc_time) < 0) {
+		pr_debug("set rtc time err\n");
+		return -1;
+	}
+#endif
 	return 0;
 }
 
+#ifdef CONFIG_MACH_MSM7X30_COCKTAIL
+//set default time as 20110101-000000
+#define DEFAULT_DATE_TIME 	(mktime(2011,1,1,0,0,0))
+
+//Refer to frameworks/base/services/java/com/android/server/SystemServer.java,
+//the Android don't support date earlier than 19700102-000000. 
+//Fortunately, when the power-drop occurs, the rtc will start at 0, so that we
+//can implement a simple mechanism to detect the rtc-failure.
+#define EARLIEST_SUPPORTED_TIME (86400)
+
+//avoid negative numbers.
+#define MAXIMUM_SUPPORTED_TIME  (0x7FFFFFFF)
+
+//PR303534 for drm get default time start
+static ssize_t rtc_default_show(struct device *dev, 
+        struct device_attribute *attr, char *buf)
+{
+
+    unsigned long rtc_time;
+    rtc_time = DEFAULT_DATE_TIME;
+    return   snprintf(buf, 13, "%ld\n", rtc_time);
+}
+static DEVICE_ATTR(rtc_default, 0664, rtc_default_show, NULL);
+//PR303534 for drm get default time end
+
+static inline int msmrtc_rtc_time_is_invalid(unsigned long rtc_time)
+{
+	if((rtc_time < EARLIEST_SUPPORTED_TIME)
+			|| (rtc_time > MAXIMUM_SUPPORTED_TIME)){
+		return 1;
+	}else{
+		return 0;
+	}
+}
+
+static inline int msmrtc_set_default_tm(struct rtc_time *tm)
+{
+	unsigned long rt = DEFAULT_DATE_TIME;
+
+	rtc_time_to_tm(rt, tm);
+	pr_debug( "%s:%.2u/%.2u/%.4u %.2u:%.2u:%.2u (%.2u)\n",
+		__func__,tm->tm_mon, tm->tm_mday, tm->tm_year,
+		tm->tm_hour, tm->tm_min, tm->tm_sec, tm->tm_wday);
+
+	//msmrtc_timeremote_set_time(dev, tm);//invoking this cause freezing.
+	if (pmic_rtc_start((struct rtc_time *)&rt) < 0) {
+		pr_debug("set rtc default time error.\n");
+		return -1;
+	}
+	return 0;
+}
+#endif
 static int
 msmrtc_timeremote_read_time(struct device *dev, struct rtc_time *tm)
 {
 	int rc;
+	unsigned long rtc_time;
 	struct rtc_tod_args rtc_args;
 	struct msm_rtc *rtc_pdata = dev_get_drvdata(dev);
 
 	rtc_args.proc = TIMEREMOTE_PROCEEDURE_GET_JULIAN;
 	rtc_args.tm = tm;
+	rtc_time = 0;
 
 	rc = msm_rpc_client_req(rtc_pdata->rpc_client,
 				TIMEREMOTE_PROCEEDURE_GET_JULIAN,
@@ -338,6 +418,22 @@ msmrtc_timeremote_read_time(struct device *dev, struct rtc_time *tm)
 		dev_err(dev, "%s: Error retrieving rtc (TOD) time\n", __func__);
 		return rc;
 	}
+#ifdef CONFIG_MACH_MSM7X30_COCKTAIL
+	if(pmic_rtc_get_time((struct rtc_time *)&rtc_time) < 0 ) {
+		pr_debug("%s:get time err \n", __func__);
+		return -1;
+	}
+
+	if(msmrtc_rtc_time_is_invalid(rtc_time)){
+		msmrtc_set_default_tm(tm);
+	}else{
+		rtc_time_to_tm(rtc_time, tm);
+	}
+
+	pr_debug( "%s:%.2u/%.2u/%.4u %.2u:%.2u:%.2u (%.2u)\n",
+		__func__,tm->tm_mon, tm->tm_mday, tm->tm_year,
+		tm->tm_hour, tm->tm_min, tm->tm_sec, tm->tm_wday);
+#endif
 
 	return 0;
 }
@@ -597,6 +693,54 @@ static int msmrtc_setup_cb(struct msm_rtc *rtc_pdata)
 	return rc;
 }
 
+
+static ssize_t rtc_alarm_store(struct device *dev, 
+        struct device_attribute *attr,const char *buf,size_t count)
+{
+    uint alarm_sec = 0;
+    uint rtc_alarm_time = 0;
+
+	if (sscanf(buf, "%u", &alarm_sec) != 1) {
+        pr_debug("scanf the input alarm sec err\n");
+        return -EINVAL;
+    }
+
+    //get rtc alarm time
+    if(pmic_rtc_get_time((struct rtc_time *)&rtc_alarm_time) < 0 ) {
+        pr_debug("get rtc alarm time err\n");
+        return -1;
+    }
+    pmic_rtc_disable_alarm(PM_RTC_ALARM_1);
+    //set rtc alarm time
+    rtc_alarm_time += alarm_sec - 25;
+    if (pmic_rtc_enable_alarm(PM_RTC_ALARM_1,
+                (struct rtc_time *)&rtc_alarm_time) < 0)
+        return -EFAULT;
+
+    return 0;
+}
+
+static ssize_t rtc_alarm_show(struct device *dev, 
+        struct device_attribute *attr, char *buf)
+{
+    int alarm_time = -1;
+    uint rtc_alarm_time = 0;
+    uint rtc_time = 0;
+
+    if (pmic_rtc_get_alarm_time(PM_RTC_ALARM_1,
+                (struct rtc_time *)&rtc_alarm_time) < 0)
+        return -EFAULT;
+
+    //get rtc alarm time
+    if(pmic_rtc_get_time((struct rtc_time *)&rtc_time) < 0 ) {
+       pr_debug("get rtc alarm time err\n");
+        return -EFAULT;
+    }
+    alarm_time = rtc_alarm_time - rtc_time;
+    return   snprintf(buf, 13, "%d\n", alarm_time);
+}
+
+static DEVICE_ATTR(rtc_alarm, 0664, rtc_alarm_show, rtc_alarm_store);
 static int __devinit
 msmrtc_probe(struct platform_device *pdev)
 {
@@ -655,6 +799,23 @@ msmrtc_probe(struct platform_device *pdev)
 		goto fail_cb_setup;
 	}
 
+
+	rc = sysfs_create_file(&rtc_pdata->rtc->dev.kobj, &dev_attr_rtc_alarm.attr);
+	if (rc) {
+		pr_debug(KERN_ERR
+		       "dlbn_sysfs_init:"\
+		       "sysfs_create failed\n");
+	}
+	
+	//PR303534 for drm get default time start
+	rc = sysfs_create_file(&rtc_pdata->rtc->dev.kobj, &dev_attr_rtc_default.attr);
+	if (rc) {
+		pr_debug(KERN_ERR
+		       "dlbn_sysfs_init:"\
+		       "sysfs_create failed\n");
+	}	
+	//PR303534 for drm get default time end
+	
 #ifdef CONFIG_RTC_SECURE_TIME_SUPPORT
 	rtc_pdata->rtcsecure = rtc_device_register("msm_rtc_secure",
 				  &pdev->dev,

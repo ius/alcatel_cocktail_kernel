@@ -30,6 +30,18 @@ enum msm_cam_flash_stat{
 	MSM_CAM_FLASH_ON,
 };
 
+#define CONFIG_LEDS_CUSTOM
+#if defined(CONFIG_LEDS_CUSTOM)
+enum msm_cam_custom_flash_stat{
+        MSM_CAM_CUSTOM_FLASH_OFF,   
+        MSM_CAM_CUSTOM_FLASH_HIGH,
+        MSM_CAM_CUSTOM_FLASH_MIDDLE,
+        MSM_CAM_CUSTOM_FLASH_LOW,
+        MSM_CAM_CUSTOM_FLASH_MODE
+};
+extern int torch_flash_control(int mode);
+#endif
+
 #if defined CONFIG_MSM_CAMERA_FLASH_SC628A
 static struct i2c_client *sc628a_client;
 
@@ -145,12 +157,45 @@ static int config_flash_gpio_table(enum msm_cam_flash_stat stat,
 	return rc;
 }
 
+#if defined(CONFIG_LEDS_CUSTOM)
+int msm_camera_flash_custom(
+        struct msm_camera_sensor_flash_current_driver *current_driver,
+        unsigned led_state)
+{
+        int rc = 0;
+
+        switch (led_state) {
+        case MSM_CAMERA_LED_OFF:
+                rc = torch_flash_control(MSM_CAM_CUSTOM_FLASH_OFF);
+                break;
+
+        case MSM_CAMERA_LED_LOW:
+                rc = torch_flash_control(MSM_CAM_CUSTOM_FLASH_HIGH);
+                break;
+
+        case MSM_CAMERA_LED_HIGH:
+                rc = torch_flash_control(MSM_CAM_CUSTOM_FLASH_MODE);
+                break;
+
+        default:
+                rc = -EFAULT;
+                break;
+        }
+        CDBG("msm_camera_flash_custom: return %d,led_state = %d\n", rc, led_state);
+
+        return rc;
+}
+#endif
+
 int msm_camera_flash_current_driver(
 	struct msm_camera_sensor_flash_current_driver *current_driver,
 	unsigned led_state)
 {
 	int rc = 0;
-#if defined CONFIG_LEDS_PMIC8058
+
+#if defined(CONFIG_LEDS_CUSTOM)
+       rc = msm_camera_flash_custom(current_driver,led_state);
+#elif defined CONFIG_LEDS_PMIC8058
 	int idx;
 	const struct pmic8058_leds_platform_data *driver_channel =
 		current_driver->driver_channel;

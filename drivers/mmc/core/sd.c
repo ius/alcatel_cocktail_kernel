@@ -1141,7 +1141,8 @@ static int mmc_sd_resume(struct mmc_host *host)
 			       mmc_hostname(host), err, retries);
 			retries--;
 			mmc_power_off(host);
-			usleep_range(5000, 5500);
+			//usleep_range(5000, 5500);
+			mdelay(50);
 			mmc_power_up(host);
 			mmc_select_voltage(host, host->ocr);
 			continue;
@@ -1277,11 +1278,21 @@ int mmc_attach_sd(struct mmc_host *host)
 #ifdef CONFIG_MMC_PARANOID_SD_INIT
 	retries = 5;
 	while (retries) {
+		/************
+		for the voltage stable
+		****************/
+		mmc_power_off(host);
+		mdelay(50);
+		mmc_power_up(host);
+		mmc_select_voltage(host, host->ocr);
 		err = mmc_sd_init_card(host, host->ocr, NULL);
 		if (err) {
+			printk(KERN_ERR "%s: Re-init card rc = %d (retries = %d)\n",
+			       mmc_hostname(host), err, retries);
 			retries--;
 			mmc_power_off(host);
-			usleep_range(5000, 5500);
+			//usleep_range(5000, 5500);
+			mdelay(50);
 			mmc_power_up(host);
 			mmc_select_voltage(host, host->ocr);
 			continue;

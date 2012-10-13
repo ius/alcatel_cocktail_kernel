@@ -15,8 +15,8 @@
  * this needs to be before <linux/kernel.h> is loaded,
  * and <linux/sched.h> loads <linux/kernel.h>
  */
-#define DEBUG  0
 
+#define DEBUG 0
 #include <linux/slab.h>
 #include <linux/earlysuspend.h>
 #include <linux/err.h>
@@ -28,8 +28,13 @@
 #include <linux/uaccess.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
-
+//add by chenfei
+#include <linux/time.h>
+#include <linux/wakelock.h>
+//end by chenfei
+#include <linux/reboot.h>
 #include <asm/atomic.h>
+#include <linux/mutex.h>
 
 #include <mach/msm_rpcrouter.h>
 #include <mach/msm_battery.h>
@@ -54,14 +59,15 @@
 #define BATTERY_DEREGISTER_CLIENT_PROC			5
 #define BATTERY_READ_MV_PROC				12
 #define BATTERY_ENABLE_DISABLE_FILTER_PROC		14
-
+#define BATTERY_READ_TEMP_PROC				17
+#define BATTERY_READ_ID_PROC				18
 #define VBATT_FILTER			2
 
 #define BATTERY_CB_TYPE_PROC		1
 #define BATTERY_CB_ID_ALL_ACTIV		1
 #define BATTERY_CB_ID_LOW_VOL		2
 
-#define BATTERY_LOW		3200
+#define BATTERY_LOW		3400
 #define BATTERY_HIGH		4300
 
 #define ONCRPC_CHG_GET_GENERAL_STATUS_PROC	12
@@ -74,7 +80,83 @@
 #define RPC_TYPE_REQ     0
 #define RPC_TYPE_REPLY   1
 #define RPC_REQ_REPLY_COMMON_HEADER_SIZE   (3 * sizeof(uint32_t))
+#define BATTID_CHECK_ENABLE 1
+#define Track 		 1
+//started by chenfei
+struct mutex jrd_update_lock;
+#if Track
+enum TRACKING_STATUS{
+	TRACK_ON,
+	TRACK_SLEEP,
+	TRACK_SUSPEND,
+	TRACK_RESUME,
+	TRACK_BOOT,
+	TRACK_POWEROFFCHG_TO_POWERON,
+};
 
+enum CHG_STATUS{
+	TRACK_CHG_DISCHARGING,
+	TRACK_CHG_REMOVE,
+	TRACK_CHG_PLUGIN,
+	TRACK_CHG_CHARGING,
+	TRACK_CHG_CHARGING_FULL,
+};
+
+struct track_struct {
+	u32 ui_cap;
+	u32 ui_true_vol;
+	u32 ui_pre_state;
+	u32 ui_state;
+	u32 ui_chg_type;
+	u32 ui_chg_status;
+};
+
+static struct timespec tracktime;
+static struct timespec sleep_time;
+static struct track_struct track;
+struct wake_lock msm_battery_lock;
+static u32 has_battery_lock;
+
+void track_on(void);
+void track_sleep(void);
+void track_resume(void);
+void track_suspend(void);
+void track_boot(void);
+void track_offchg_poweron(void);
+
+void on_chg_remove(void);
+void on_chg_plugin(void);
+void on_chg_charging(void);
+void on_chg_discharging(void);
+void on_chg_chargingfull(void);
+
+void suspend_chg_remove(void);
+void suspend_chg_plugin(void);
+void suspend_chg_charging(void);
+void suspend_chg_discharging(void);
+void suspend_chg_chargingfull(void);
+
+void resume_chg_remove(void);
+void resume_chg_plugin(void);
+void resume_chg_charging(void);
+void resume_chg_discharging(void);
+void resume_chg_chargingfull(void);
+
+void sleep_chg_remove(void);
+void sleep_chg_plugin(void);
+void sleep_chg_charging(void);
+void sleep_chg_discharging(void);
+void sleep_chg_chargingfull(void);
+#endif
+//ended by chenfei
+
+/** Transmission timer */
+static struct timer_list jrd_poll_voltage_timer;
+static u16 jrd_start_poll_voltage_timer = 0;
+static u16 ui_cali_flag = 0;
+
+/** Lock for state transitions */
+//static spinlock_t jrd_voltage_lock;
 
 #if DEBUG
 #define DBG_LIMIT(x...) do {if (printk_ratelimit()) pr_debug(x); } while (0)
@@ -321,6 +403,7 @@ static enum power_supply_property msm_batt_power_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_CAPACITY,
+	POWER_SUPPLY_PROP_TEMP,
 };
 
 static int msm_batt_power_get_property(struct power_supply *psy,
@@ -347,10 +430,17 @@ static int msm_batt_power_get_property(struct power_supply *psy,
 		val->intval = msm_batt_info.voltage_min_design;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		val->intval = msm_batt_info.battery_voltage;
+		val->intval = msm_batt_info.battery_voltage*1000;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		val->intval = msm_batt_info.batt_capacity;
+		#if Track
+		val->intval = track.ui_cap;
+		#else 
+		val->intval = msm_batt_info.batt_capacity; //modified by chenfei
+		#endif
+		break;
+	case POWER_SUPPLY_PROP_TEMP:
+		val->intval = msm_batt_info.battery_temp*10;
 		break;
 	default:
 		return -EINVAL;
@@ -404,6 +494,176 @@ static u32 msm_batt_get_vbatt_voltage(void)
 	return rep.battery_voltage;
 }
 
+struct msm_batt_get_temp_ret_data {
+	u32 battery_temperature;
+};
+
+static int msm_batt_get_temp_ret_func(struct msm_rpc_client *batt_client,
+				       void *buf, void *data)
+{
+	struct msm_batt_get_temp_ret_data *data_ptr, *buf_ptr;
+
+	data_ptr = (struct msm_batt_get_temp_ret_data *)data;
+	buf_ptr = (struct msm_batt_get_temp_ret_data *)buf;
+
+	data_ptr->battery_temperature = be32_to_cpu(buf_ptr->battery_temperature);
+
+	return 0;
+}
+
+static u32 msm_batt_get_vbatt_temperature(void)
+{
+	int rc;
+
+	struct msm_batt_get_temp_ret_data rep;
+
+	rc = msm_rpc_client_req(msm_batt_info.batt_client,
+			BATTERY_READ_TEMP_PROC,
+			NULL, NULL,
+			msm_batt_get_temp_ret_func, &rep,
+			msecs_to_jiffies(BATT_RPC_TIMEOUT));
+
+	if (rc < 0) {
+		pr_err("%s: FAIL: vbatt get temp. rc=%d\n", __func__, rc);
+		return 0;
+	}
+
+	return rep.battery_temperature;
+}
+
+struct msm_batt_get_id_ret_data {
+	u32 battery_id;
+};
+
+static int msm_batt_get_id_ret_func(struct msm_rpc_client *batt_client,
+				       void *buf, void *data)
+{
+	struct msm_batt_get_id_ret_data *data_ptr, *buf_ptr;
+
+	data_ptr = (struct msm_batt_get_id_ret_data *)data;
+	buf_ptr = (struct msm_batt_get_id_ret_data *)buf;
+
+	data_ptr->battery_id = be32_to_cpu(buf_ptr->battery_id);
+
+	return 0;
+}
+static u32 msm_batt_get_vbatt_id(void)
+{
+	int rc;
+
+	struct msm_batt_get_id_ret_data rep;
+
+	rc = msm_rpc_client_req(msm_batt_info.batt_client,
+			BATTERY_READ_ID_PROC,
+			NULL, NULL,
+			msm_batt_get_id_ret_func, &rep,
+			msecs_to_jiffies(BATT_RPC_TIMEOUT));
+
+	if (rc < 0) {
+		pr_err("%s: FAIL: vbatt get id. rc=%d\n", __func__, rc);
+		return 0;
+	}
+
+	return rep.battery_id;
+}
+	/*4.20--100%
+	    2.99--0%
+	    MAX_TALBLE_SIZE=122 */
+	    //capacity 100% is calibrated down 30mV for user feeling the speed of charging too low.
+const u32 jrd_bydbatt_capacity[] =
+	{
+	/**************************************
+	100,100,100,100,100,100,100,100,98,97,
+	96,95,94,93,92,91,90,89,88,87,
+	86,84,83,82,81,80,78,77,76,74,
+	73,71,70,69,67,66,64,63,62,60,
+	58,56,54,52,50,48,46,44,42,40,
+	38,36,34,32,30,28,26,24,22,20,
+	19,18,17,16,15,14,13,12,11,10,
+	9,8,7,6,5,4,3,3,3,3,
+	2,2,2,2,2,2,1,1,1,1,
+	1,1,1,1,1,1,1,1,1,0,
+	0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,
+	0,0
+	**************************************/
+	100,100,100,100,100,100,100,100,98,97,
+	96,95,94,93,92,91,90,89,88,87,
+	86,84,83,82,81,80,78,77,76,74,
+	73,71,70,69,67,66,64,63,62,60,
+	58,56,54,52,50,47,44,40,37,32,
+	28,24,21,19,18,16,15,14,11,9,
+	8,7,6,6,6,6,6,6,5,4,
+	4,4,3,3,3,3,3,3,3,3,
+	2,2,2,2,2,2,1,1,1,1,
+	1,1,1,1,1,1,1,1,1,0,
+	0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,
+	0,0
+	};
+	/*4.20--100%
+	    2.99--0%
+	    MAX_TALBLE_SIZE=122 */
+/************************************
+const u32 jrd_scudbatt_capacity[] =
+	{
+	100,100,100,100,100,100,99,99,99,99,
+	99,98,98,97,97,96,96,95,95,94,
+	93,93,92,91,90,90,89,88,87,86,
+	85,84,83,82,80,79,78,76,75,73,
+	72,70,69,67,65,63,61,58,56,53,
+	50,47,44,40,36,31,27,24,22,19,
+	17,14,12,10,9,8,7,6,6,5,
+	5,4,4,4,4,3,3,3,3,3,
+	2,2,2,2,2,2,2,1,1,1,
+	1,1,1,1,1,1,1,1,0,0,
+	0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,
+	0,0
+	};
+************************************/
+
+const u32 jrd_scudbatt_capacity[] =
+	{
+	/***************************************
+		100,100,100,100,100,100,100,100,100,99,
+		99,98,98,97,97,96,96,95,95,94,
+		93,93,92,91,90,90,89,88,87,86,
+		84,82,80,78,76,74,72,70,68,66,
+		64,62,60,58,56,54,52,50,48,46,
+		44,42,40,38,36,34,32,30,28,26,
+		24,22,20,18,16,14,12,10,9,8,
+		7,6,5,4,4,3,3,3,3,3,
+		2,2,2,2,2,2,2,1,1,1,
+		1,1,1,1,1,1,1,1,0,0,
+		0,0,0,0,0,0,0,0,0,0,
+		0,0,0,0,0,0,0,0,0,0,
+		0,0
+	***************************************/
+	100,100,100,100,100,100,100,100,100,99,
+	99,98,98,97,97,96,96,95,95,94,
+	93,93,92,91,90,90,89,88,87,86,
+	85,84,83,82,80,79,78,76,75,73,
+	72,70,69,67,65,63,61,58,56,53,
+	50,47,44,40,36,31,27,24,22,19,
+	17,14,12,10,9,8,7,6,6,5,
+	5,4,4,4,4,3,3,3,3,3,
+	2,2,2,2,2,2,2,1,1,1,
+	1,1,1,1,1,1,1,1,0,0,
+	0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,
+	0,0
+	};
+
+enum battery_type {
+	/* The  4.35V_type battery */
+	BATTERY_4p35V,
+	/* The  4.20V_type battery */
+	BATTERY_4p20V,
+};
+
+static u16 batt_type;
+
 #define	be32_to_cpu_self(v)	(v = be32_to_cpu(v))
 
 static int msm_batt_get_batt_chg_status(void)
@@ -445,6 +705,423 @@ static int msm_batt_get_batt_chg_status(void)
 	return 0;
 }
 
+#if Track
+static u32 time_space;
+static u32 sleep_space;
+static u32 time_update;
+void ui_tracking(void)
+{
+  struct timespec current_time;
+  current_time = current_kernel_time();
+  if(msm_batt_info.batt_capacity<=15)
+  	time_update = 10;
+  else
+  	time_update = 30;
+  if(current_time.tv_sec>=tracktime.tv_sec)
+  {
+   time_space = current_time.tv_sec - tracktime.tv_sec;
+   //one year and it's impossible that the phone sleep one year,so it's the first update time from rtc(1970.1.1 to now)
+   //or setting time lead to time_space over one year. 
+   if(time_space >=3600*24*365)	
+   	{
+   	 time_space = time_update;
+	 tracktime = current_time;
+   	}
+   else if(time_space >= time_update)
+   	{
+   	 tracktime = current_time;
+   	}
+  }
+  else  	//setting RTC time may lead to a case that time is nevigate
+  {
+   time_space = time_update;
+   tracktime = current_time;
+  }
+  //printk("BATT: time_space is %d ; track.ui_state is %d ; track.ui_chg_state %d; \n",time_space,track.ui_state,track.ui_chg_status);
+  switch(track.ui_state){
+	case TRACK_ON:{
+		 track_on();
+		 break;
+		}
+        case TRACK_SLEEP:{
+		 track_sleep();
+		 break;
+		}
+        case TRACK_RESUME:{
+		 track_resume();
+		 break;
+		}
+	case TRACK_SUSPEND:{
+		 track_suspend();
+		 break;
+		}
+	case TRACK_BOOT:{
+		 track_boot();
+		 break;
+		}
+	case TRACK_POWEROFFCHG_TO_POWERON:{
+		 track_offchg_poweron();
+		 break;
+		}
+        default :  break;
+	}
+ //printk("BATT: track.ui_cap %d ; track.ui_true_cap %d ; track.ui_chg_type %d \n",track.ui_cap,track.ui_true_vol,track.ui_chg_type);
+}
+
+void track_on(void){
+	switch(track.ui_chg_status){
+	case TRACK_CHG_REMOVE:{
+		 track.ui_chg_status = TRACK_CHG_DISCHARGING;
+		 on_chg_remove();
+		 break;
+		}
+	case TRACK_CHG_PLUGIN:{
+		 track.ui_chg_status = TRACK_CHG_CHARGING;
+		 on_chg_plugin();
+		 if(track.ui_cap == 100){
+			track.ui_chg_status = TRACK_CHG_CHARGING_FULL;
+			msm_batt_info.batt_status = POWER_SUPPLY_STATUS_FULL;
+			if(1 == has_battery_lock){
+			wake_unlock(&msm_battery_lock);
+			has_battery_lock = 0;
+				}
+		 	}
+		 break;
+		}
+	case TRACK_CHG_CHARGING:{
+		 on_chg_charging();
+		 if(track.ui_cap == 100){
+		 track.ui_chg_status = TRACK_CHG_CHARGING_FULL;
+		 msm_batt_info.batt_status = POWER_SUPPLY_STATUS_FULL;
+		 if(1 == has_battery_lock){
+			wake_unlock(&msm_battery_lock);
+			has_battery_lock = 0;
+				}
+		 	}
+		 break;
+		}
+	case TRACK_CHG_CHARGING_FULL :{
+		 on_chg_chargingfull();
+		 break;
+		}
+	case TRACK_CHG_DISCHARGING :{
+		 on_chg_discharging();
+		 break;
+		}
+	default : break;
+	}
+}
+void track_sleep(void){
+	switch(track.ui_chg_status){
+	case TRACK_CHG_REMOVE :{
+		 track.ui_chg_status = TRACK_CHG_DISCHARGING;
+		 sleep_chg_remove();
+		 break;
+		}
+	case TRACK_CHG_PLUGIN :{
+		 track.ui_chg_status = TRACK_CHG_CHARGING;
+		 sleep_chg_plugin();
+		 if(track.ui_cap == 100){
+			track.ui_chg_status = TRACK_CHG_CHARGING_FULL;
+			msm_batt_info.batt_status = POWER_SUPPLY_STATUS_FULL;
+			if(1 == has_battery_lock){
+			wake_unlock(&msm_battery_lock);
+			has_battery_lock = 0;
+				}
+		 	}
+		 break;
+		}
+	case TRACK_CHG_CHARGING   :{
+		 sleep_chg_charging();
+		 if(track.ui_cap == 100){
+		 track.ui_chg_status = TRACK_CHG_CHARGING_FULL;
+		 msm_batt_info.batt_status = POWER_SUPPLY_STATUS_FULL;
+		 if(1 == has_battery_lock){
+			wake_unlock(&msm_battery_lock);
+			has_battery_lock = 0;
+				}
+		 	}
+		 break;
+		}
+	case TRACK_CHG_CHARGING_FULL :{
+		 sleep_chg_chargingfull();
+		 break;
+		}
+	case TRACK_CHG_DISCHARGING :{
+		 sleep_chg_discharging();
+		 break;
+		}
+	default : break;
+	}
+}
+void track_resume(void){
+	struct timespec temp_time;
+	temp_time = current_kernel_time();
+	sleep_space = (temp_time.tv_sec - sleep_time.tv_sec);
+	if((sleep_space > 30*60) && (track.ui_chg_status ==  TRACK_CHG_DISCHARGING )&& (ui_cali_flag == 1))
+		{
+			track.ui_true_vol = msm_batt_info.calculate_capacity((msm_batt_info.battery_voltage-15));
+			time_space = sleep_space;
+			//printk("BATT: Resume ui calibration \n");
+		}
+	switch(track.ui_chg_status){
+	case TRACK_CHG_REMOVE :{
+		 track.ui_chg_status = TRACK_CHG_DISCHARGING;
+		 resume_chg_remove();
+		 break;
+		}
+	case TRACK_CHG_PLUGIN :{
+		 track.ui_chg_status = TRACK_CHG_CHARGING;
+		 resume_chg_plugin();
+		 if(track.ui_cap == 100){
+			track.ui_chg_status = TRACK_CHG_CHARGING_FULL;
+			msm_batt_info.batt_status = POWER_SUPPLY_STATUS_FULL;
+			if(1 == has_battery_lock){
+			wake_unlock(&msm_battery_lock);
+			has_battery_lock = 0;
+				}
+		 	}
+		 break;
+		}
+	case TRACK_CHG_CHARGING   :{
+		 resume_chg_charging();
+		 if(track.ui_cap == 100){
+		 track.ui_chg_status = TRACK_CHG_CHARGING_FULL;
+		 msm_batt_info.batt_status = POWER_SUPPLY_STATUS_FULL;
+		 if(1 == has_battery_lock){
+			wake_unlock(&msm_battery_lock);
+			has_battery_lock = 0;
+				}
+		 	}
+		 break;
+		}
+	case TRACK_CHG_CHARGING_FULL :{
+		 resume_chg_chargingfull();
+		 break;
+		}
+	case TRACK_CHG_DISCHARGING :{
+		 resume_chg_discharging();
+		 break;
+		}
+	default : break;
+	}
+}
+void track_suspend(void){
+	switch(track.ui_chg_status){
+	case TRACK_CHG_REMOVE :{
+		 track.ui_chg_status = TRACK_CHG_DISCHARGING;
+		 suspend_chg_remove();
+		 break;
+		}
+	case TRACK_CHG_PLUGIN :{
+		 track.ui_chg_status = TRACK_CHG_CHARGING;
+		 suspend_chg_plugin();
+		 if(track.ui_cap == 100){
+			track.ui_chg_status = TRACK_CHG_CHARGING_FULL;
+			msm_batt_info.batt_status = POWER_SUPPLY_STATUS_FULL;
+			if(1 == has_battery_lock){
+			wake_unlock(&msm_battery_lock);
+			has_battery_lock = 0;
+				}
+		 	}
+		 break;
+		}
+	case TRACK_CHG_CHARGING   :{
+		 resume_chg_charging();
+		 if(track.ui_cap == 100){
+		 track.ui_chg_status = TRACK_CHG_CHARGING_FULL;
+		 msm_batt_info.batt_status = POWER_SUPPLY_STATUS_FULL;
+		 if(1 == has_battery_lock){
+			wake_unlock(&msm_battery_lock);
+			has_battery_lock = 0;
+				}
+		 	}
+		 break;
+		}
+	case TRACK_CHG_CHARGING_FULL :{
+		 suspend_chg_chargingfull();
+		 break;
+		}
+	case TRACK_CHG_DISCHARGING :{
+		 suspend_chg_discharging();
+		 break;
+		}
+	default : break;
+	}
+}
+void track_boot(void){
+	u32 vbatt_clb;
+	if(track.ui_cap < track.ui_true_vol) //Boot Stage get the max voltage
+	track.ui_cap = track.ui_true_vol;
+	if(track.ui_true_vol > 19){
+		vbatt_clb = 18 + (10 - track.ui_true_vol /10)*4;
+		track.ui_cap = msm_batt_info.calculate_capacity((msm_batt_info.battery_voltage+vbatt_clb));
+	}
+	track.ui_state = TRACK_ON;
+}
+void track_offchg_poweron(void){
+
+}
+
+void on_chg_remove(void){
+	
+	track.ui_chg_type = 0; //charger remove and set the chg_type 0
+}
+
+void on_chg_plugin(void){
+
+	track.ui_chg_type = 1; //charger remove and set the chg_type 1
+}
+
+void on_chg_charging(void){
+	if(track.ui_cap < track.ui_true_vol && track.ui_chg_type && time_space >= time_update){
+		track.ui_cap++;
+	}
+	else{
+		;	
+	}	
+}
+
+void on_chg_chargingfull(void){
+	if(1 == has_battery_lock){
+			wake_unlock(&msm_battery_lock);
+			has_battery_lock = 0;
+				}
+	;
+}
+
+void on_chg_discharging(void){
+	if(track.ui_cap > track.ui_true_vol && 0 == track.ui_chg_type && time_space >= time_update){
+		track.ui_cap--;
+	}
+	else{
+		;
+	}
+}
+void sleep_chg_remove(void){
+	track.ui_chg_type = 0;
+	if(track.ui_cap < track.ui_true_vol){
+		if((track.ui_true_vol - track.ui_cap) < (time_space/time_update))
+		track.ui_cap = track.ui_true_vol;
+		else
+		track.ui_cap += time_space/time_update;
+	}
+}
+void sleep_chg_plugin(void){
+	track.ui_chg_type = 1;
+	if(track.ui_cap > track.ui_true_vol){
+		if((track.ui_cap - track.ui_true_vol) < (time_space/time_update))
+		track.ui_cap = track.ui_true_vol;
+		else
+		track.ui_cap -= (time_space/time_update);
+	}
+}
+void sleep_chg_charging(void){
+	if(track.ui_cap < track.ui_true_vol){
+		if((track.ui_true_vol - track.ui_cap) < (time_space/time_update))
+		track.ui_cap = track.ui_true_vol;
+		else
+		track.ui_cap += time_space/time_update;
+	}
+}
+void sleep_chg_chargingfull(void){
+	if(1 == has_battery_lock){
+			wake_unlock(&msm_battery_lock);
+			has_battery_lock = 0;
+				}
+	;
+}
+void sleep_chg_discharging(void){
+	if(track.ui_cap > track.ui_true_vol){
+		if((track.ui_cap - track.ui_true_vol) < (time_space/time_update))
+		track.ui_cap = track.ui_true_vol;
+		else
+		track.ui_cap -= (time_space/time_update);
+	}
+}
+void resume_chg_remove(void){
+	track.ui_chg_type = 0;
+	if(track.ui_cap < track.ui_true_vol){
+		if((track.ui_true_vol - track.ui_cap) < (time_space/time_update))
+		track.ui_cap = track.ui_true_vol;
+		else
+		track.ui_cap += time_space/time_update;
+	}
+}
+void resume_chg_plugin(void){
+	track.ui_chg_type = 1;
+	if(track.ui_cap > track.ui_true_vol){
+		if((track.ui_cap - track.ui_true_vol) < (time_space/time_update))
+		track.ui_cap = track.ui_true_vol;
+		else
+		track.ui_cap -= (time_space/time_update);
+	}
+}
+void resume_chg_charging(void){
+	if(track.ui_cap < track.ui_true_vol){
+		if((track.ui_true_vol - track.ui_cap) < (time_space/time_update))
+		track.ui_cap = track.ui_true_vol;
+		else
+		track.ui_cap += time_space/time_update;
+	}
+}
+void resume_chg_chargingfull(void){
+	if(1 == has_battery_lock){
+			wake_unlock(&msm_battery_lock);
+			has_battery_lock = 0;
+				}
+}
+void resume_chg_discharging(void){
+	if(track.ui_cap > track.ui_true_vol){
+		if((track.ui_cap - track.ui_true_vol) < (time_space/time_update))
+		track.ui_cap = track.ui_true_vol;
+		else
+		track.ui_cap -= (time_space/time_update);
+	}
+}
+void suspend_chg_remove(void){
+	track.ui_chg_type = 0;
+	if(track.ui_cap < track.ui_true_vol){
+		if((track.ui_true_vol - track.ui_cap) < (time_space/time_update))
+		track.ui_cap = track.ui_true_vol;
+		else
+		track.ui_cap += time_space/time_update;
+	}
+}
+void suspend_chg_plugin(void){
+	track.ui_chg_type = 1;
+	if(track.ui_cap > track.ui_true_vol){
+		if((track.ui_cap - track.ui_true_vol) < (time_space/time_update))
+		track.ui_cap = track.ui_true_vol;
+		else
+		track.ui_cap -= (time_space/time_update);
+	}
+}
+void suspend_chg_charging(void){
+	if(track.ui_cap < track.ui_true_vol){
+		if((track.ui_true_vol - track.ui_cap) < (time_space/time_update))
+		track.ui_cap = track.ui_true_vol;
+		else
+		track.ui_cap += time_space/time_update;
+	}
+}
+void suspend_chg_chargingfull(void){
+	if(1 == has_battery_lock){
+			wake_unlock(&msm_battery_lock);
+			has_battery_lock = 0;
+				}
+	;
+}
+void suspend_chg_discharging(void){
+	if(track.ui_cap > track.ui_true_vol){
+		if((track.ui_cap - track.ui_true_vol) < (time_space/time_update))
+		track.ui_cap = track.ui_true_vol;
+		else
+		track.ui_cap -= (time_space/time_update);
+	}
+}
+#endif
+
 static void msm_batt_update_psy_status(void)
 {
 	static u32 unnecessary_event_count;
@@ -454,8 +1131,12 @@ static void msm_batt_update_psy_status(void)
 	u32	battery_level;
 	u32     battery_voltage;
 	u32	battery_temp;
+	static u32 battery_id = 0;
+	u32 pre_ui_cap;
+#ifndef TARGET_BUILD_MMITEST
+	static int idvalid_flag=20;
+#endif
 	struct	power_supply	*supp;
-
 	if (msm_batt_get_batt_chg_status())
 		return;
 
@@ -471,6 +1152,8 @@ static void msm_batt_update_psy_status(void)
 		if (msm_batt_info.chg_api_version < CHG_RPC_VER_3_1)
 			battery_status = BATTERY_STATUS_INVALID;
 	}
+	battery_voltage = msm_batt_get_vbatt_voltage();
+	battery_temp = msm_batt_get_vbatt_temperature();
 
 	if (charger_status == msm_batt_info.charger_status &&
 	    charger_type == msm_batt_info.charger_type &&
@@ -485,6 +1168,12 @@ static void msm_batt_update_psy_status(void)
 		if ((unnecessary_event_count % 20) == 1)
 			DBG_LIMIT("BATT: same event count = %u\n",
 				 unnecessary_event_count);
+		pre_ui_cap = track.ui_cap;
+		ui_tracking();
+		if(track.ui_cap != pre_ui_cap){
+			supp = &msm_psy_batt;
+			power_supply_changed(supp);
+			}
 		return;
 	}
 
@@ -502,23 +1191,50 @@ static void msm_batt_update_psy_status(void)
 	}
 
 	if (msm_batt_info.charger_type != charger_type) {
-		if (charger_type == CHARGER_TYPE_USB_WALL ||
-		    charger_type == CHARGER_TYPE_USB_PC ||
-		    charger_type == CHARGER_TYPE_USB_CARKIT) {
+		if (charger_type == CHARGER_TYPE_USB_PC ) {
 			DBG_LIMIT("BATT: USB charger plugged in\n");
+			track.ui_chg_status = TRACK_CHG_PLUGIN;
+			if(0 == has_battery_lock){
+			wake_lock(&msm_battery_lock);
+			has_battery_lock = 1;
+				}
 			msm_batt_info.current_chg_source = USB_CHG;
 			supp = &msm_psy_usb;
-		} else if (charger_type == CHARGER_TYPE_WALL) {
+		} else if (charger_type == CHARGER_TYPE_USB_WALL) {
 			DBG_LIMIT("BATT: AC Wall changer plugged in\n");
+			track.ui_chg_status = TRACK_CHG_PLUGIN;
+			if(0 == has_battery_lock){
+			wake_lock(&msm_battery_lock);
+			has_battery_lock = 1;
+				}
 			msm_batt_info.current_chg_source = AC_CHG;
 			supp = &msm_psy_ac;
 		} else {
-			if (msm_batt_info.current_chg_source & AC_CHG)
+			if (msm_batt_info.current_chg_source & AC_CHG){
 				DBG_LIMIT("BATT: AC Wall charger removed\n");
-			else if (msm_batt_info.current_chg_source & USB_CHG)
+				track.ui_chg_status = TRACK_CHG_REMOVE;
+				if(1 == has_battery_lock){
+				wake_unlock(&msm_battery_lock);
+				//printk("BATT : AC removed and unlock wakelock\n");
+				has_battery_lock = 0;
+					}
+				}
+			else if (msm_batt_info.current_chg_source & USB_CHG){
 				DBG_LIMIT("BATT: USB charger removed\n");
-			else
+				track.ui_chg_status = TRACK_CHG_REMOVE;
+				if(1 == has_battery_lock){
+				wake_unlock(&msm_battery_lock);
+				has_battery_lock = 0;
+					}
+				}
+			else{
 				DBG_LIMIT("BATT: No charger present\n");
+				track.ui_chg_status = TRACK_CHG_DISCHARGING;
+				if(1 == has_battery_lock){
+				wake_unlock(&msm_battery_lock);
+				has_battery_lock = 0;
+					}
+				}
 			msm_batt_info.current_chg_source = 0;
 			supp = &msm_psy_batt;
 
@@ -541,6 +1257,17 @@ static void msm_batt_update_psy_status(void)
 				msm_batt_info.batt_status =
 					POWER_SUPPLY_STATUS_CHARGING;
 
+#ifdef CONFIG_MACH_MSM7X30_COCKTAIL
+				if(track.ui_cap == 100) {
+					DBG_LIMIT("BATT: Charging Full\n");
+					msm_batt_info.batt_status =
+						POWER_SUPPLY_STATUS_FULL;
+					if(1 == has_battery_lock){
+					wake_unlock(&msm_battery_lock);
+					has_battery_lock = 0;
+						}
+				}
+#endif
 				/* Correct when supp==NULL */
 				if (msm_batt_info.current_chg_source & AC_CHG)
 					supp = &msm_psy_ac;
@@ -560,9 +1287,21 @@ static void msm_batt_update_psy_status(void)
 			DBG_LIMIT("BATT: In charging\n");
 			msm_batt_info.batt_status =
 				POWER_SUPPLY_STATUS_CHARGING;
+
+#ifdef CONFIG_MACH_MSM7X30_COCKTAIL
+			if(track.ui_cap == 100) {
+				DBG_LIMIT("BATT: Charging Full\n");
+				msm_batt_info.batt_status =
+					POWER_SUPPLY_STATUS_FULL;
+				if(1 == has_battery_lock){
+				wake_unlock(&msm_battery_lock);
+				has_battery_lock = 0;
+					}
+			}
+#endif
 		}
 	}
-
+#if 0
 	/* Correct battery voltage and status */
 	if (!battery_voltage) {
 		if (charger_status == CHARGER_STATUS_INVALID) {
@@ -572,6 +1311,7 @@ static void msm_batt_update_psy_status(void)
 			/* Use previous */
 			battery_voltage = msm_batt_info.battery_voltage;
 	}
+#endif
 	if (battery_status == BATTERY_STATUS_INVALID) {
 		if (battery_voltage >= msm_batt_info.voltage_min_design &&
 		    battery_voltage <= msm_batt_info.voltage_max_design) {
@@ -632,6 +1372,15 @@ static void msm_batt_update_psy_status(void)
 	msm_batt_info.battery_status 	= battery_status;
 	msm_batt_info.battery_level 	= battery_level;
 	msm_batt_info.battery_temp 	= battery_temp;
+	if( !battery_id ){
+		battery_id = msm_batt_get_vbatt_id();
+	}
+	if((battery_id > 770) && (battery_id < 1430)) {
+		batt_type = BATTERY_4p35V;
+		DBG_LIMIT("BATT: BATTERY_4p35V\n");
+	}else {
+		batt_type = BATTERY_4p20V;
+	}
 
 	if (msm_batt_info.battery_voltage != battery_voltage) {
 		msm_batt_info.battery_voltage  	= battery_voltage;
@@ -639,10 +1388,22 @@ static void msm_batt_update_psy_status(void)
 			msm_batt_info.calculate_capacity(battery_voltage);
 		DBG_LIMIT("BATT: voltage = %u mV [capacity = %d%%]\n",
 			 battery_voltage, msm_batt_info.batt_capacity);
-
-		if (!supp)
-			supp = msm_batt_info.current_ps;
 	}
+       track.ui_true_vol = msm_batt_info.batt_capacity;
+	ui_tracking();
+//if mini software, no battery for factory test
+#ifndef TARGET_BUILD_MMITEST
+	if(((battery_id < 140) || (battery_id > 1430) || ((battery_id > 260) && (battery_id < 770))) && (idvalid_flag > 0)) {
+			if(BATTID_CHECK_ENABLE){
+			kernel_power_off();
+			//printk("<4>" "BATT: kernel_power_off\n");
+		}
+	}
+	idvalid_flag--;
+	DBG_LIMIT("BATT: batt_id %d\n",battery_id);
+#endif
+	if (!supp)
+		supp = msm_batt_info.current_ps;
 
 	if (supp) {
 		msm_batt_info.current_ps = supp;
@@ -755,13 +1516,17 @@ static int msm_batt_modify_client(u32 client_handle, u32 desired_batt_voltage,
 void msm_batt_early_suspend(struct early_suspend *h)
 {
 	int rc;
-
+	track.ui_state = TRACK_SUSPEND;
 	pr_debug("%s: enter\n", __func__);
+
+	/*reset timer, cancel battery status update when phone suspended*/
+	del_timer(&jrd_poll_voltage_timer);
+	jrd_start_poll_voltage_timer = 0;
 
 	if (msm_batt_info.batt_handle != INVALID_BATT_HANDLE) {
 		rc = msm_batt_modify_client(msm_batt_info.batt_handle,
-				BATTERY_LOW, BATTERY_VOLTAGE_BELOW_THIS_LEVEL,
-				BATTERY_CB_ID_LOW_VOL, BATTERY_LOW);
+				BATTERY_LOW, BATTERY_ALL_ACTIVITY,
+				BATTERY_CB_ID_ALL_ACTIV, BATTERY_LOW);
 
 		if (rc < 0) {
 			pr_err("%s: msm_batt_modify_client. rc=%d\n",
@@ -772,15 +1537,25 @@ void msm_batt_early_suspend(struct early_suspend *h)
 		pr_err("%s: ERROR. invalid batt_handle\n", __func__);
 		return;
 	}
-
 	pr_debug("%s: exit\n", __func__);
+	if(track.ui_chg_type == 1)
+		{
+			ui_cali_flag = 0;
+		}
+	else
+		{
+			ui_cali_flag = 1;
+		}
+	track.ui_state = TRACK_SLEEP;
+	sleep_time = current_kernel_time();
+	tracktime = sleep_time;
 }
 
 void msm_batt_late_resume(struct early_suspend *h)
 {
 	int rc;
-
-	pr_debug("%s: enter\n", __func__);
+	//unsigned long irq_flags;
+	track.ui_state = TRACK_RESUME;
 
 	if (msm_batt_info.batt_handle != INVALID_BATT_HANDLE) {
 		rc = msm_batt_modify_client(msm_batt_info.batt_handle,
@@ -795,9 +1570,27 @@ void msm_batt_late_resume(struct early_suspend *h)
 		pr_err("%s: ERROR. invalid batt_handle\n", __func__);
 		return;
 	}
-
+	
+	mutex_lock(&jrd_update_lock);
 	msm_batt_update_psy_status();
+	mutex_unlock(&jrd_update_lock);
+	
+	//spin_lock_irqsave(&jrd_voltage_lock, irq_flags);
+        if (jrd_start_poll_voltage_timer == 0)
+        {
+            //printk(KERN_INFO "======start voltage timer \n");
+            jrd_start_poll_voltage_timer = 1;
+            mod_timer(&jrd_poll_voltage_timer, jiffies + (HZ * 10));
+        }
+        else
+        {
+            del_timer(&jrd_poll_voltage_timer);
+            mod_timer(&jrd_poll_voltage_timer, jiffies + (HZ * 10));
+        }
+    	//spin_unlock_irqrestore(&jrd_voltage_lock, irq_flags);
+		
 	pr_debug("%s: exit\n", __func__);
+	track.ui_state = TRACK_ON;
 }
 #endif
 
@@ -1175,6 +1968,43 @@ static int msm_batt_cleanup(void)
 
 static u32 msm_batt_capacity(u32 current_voltage)
 {
+#ifdef CONFIG_MACH_MSM7X30_COCKTAIL
+	u16 level_index = 0;
+	u32 low_voltage = 0;
+	u32 high_voltage = 0;
+	
+	if (BATTERY_4p35V == batt_type) { 
+	   	msm_batt_info.voltage_min_design = 2990;
+		msm_batt_info.voltage_max_design = 4200;
+		low_voltage = msm_batt_info.voltage_min_design;
+		high_voltage = msm_batt_info.voltage_max_design;
+		if (current_voltage > high_voltage) {
+			level_index = 0;
+		}
+		else if (current_voltage < low_voltage) {
+			level_index = 121;
+		}
+		else {
+	        	level_index = (high_voltage - current_voltage)/10;
+		}
+		return jrd_scudbatt_capacity[level_index];
+	}else {//battery is 4.20V type
+	   	msm_batt_info.voltage_min_design = 2990;
+		msm_batt_info.voltage_max_design = 4200; 
+		low_voltage = msm_batt_info.voltage_min_design;
+		high_voltage = msm_batt_info.voltage_max_design;
+		if (current_voltage > high_voltage) {
+			level_index = 0;
+		}
+		else if (current_voltage < low_voltage) {
+			level_index = 121;
+		}
+		else {
+			level_index = (high_voltage - current_voltage)/10;
+		}
+		return jrd_bydbatt_capacity[level_index];
+	}
+#else
 	u32 low_voltage = msm_batt_info.voltage_min_design;
 	u32 high_voltage = msm_batt_info.voltage_max_design;
 
@@ -1185,6 +2015,7 @@ static u32 msm_batt_capacity(u32 current_voltage)
 	else
 		return (current_voltage - low_voltage) * 100
 			/ (high_voltage - low_voltage);
+#endif
 }
 
 #ifndef CONFIG_BATTERY_MSM_FAKE
@@ -1290,10 +2121,9 @@ static int msm_batt_cb_func(struct msm_rpc_client *client,
 	struct rpc_request_hdr *req;
 	u32 procedure;
 	u32 accept_status;
-
+	//unsigned long irq_flags;
 	req = (struct rpc_request_hdr *)buffer;
 	procedure = be32_to_cpu(req->procedure);
-
 	switch (procedure) {
 	case BATTERY_CB_TYPE_PROC:
 		accept_status = RPC_ACCEPTSTAT_SUCCESS;
@@ -1313,8 +2143,26 @@ static int msm_batt_cb_func(struct msm_rpc_client *client,
 	if (rc)
 		pr_err("%s: FAIL: sending reply. rc=%d\n", __func__, rc);
 
-	if (accept_status == RPC_ACCEPTSTAT_SUCCESS)
-		msm_batt_update_psy_status();
+	if (accept_status == RPC_ACCEPTSTAT_SUCCESS){
+	/*msm_batt_update_psy_status executes later, so reset timer */
+		if (jrd_start_poll_voltage_timer == 1)
+              {
+			  //spin_lock_irqsave(&jrd_voltage_lock, irq_flags);
+			  jrd_start_poll_voltage_timer = 0;
+			  del_timer(&jrd_poll_voltage_timer);
+			  //spin_unlock_irqrestore(&jrd_voltage_lock, irq_flags);
+              }
+
+			mutex_lock(&jrd_update_lock);
+			msm_batt_update_psy_status();
+			mutex_unlock(&jrd_update_lock);
+
+	/*msm_batt_update_psy_status executed, so restart timer */
+              //spin_lock_irqsave(&jrd_voltage_lock, irq_flags);
+              jrd_start_poll_voltage_timer = 1;
+              mod_timer(&jrd_poll_voltage_timer, jiffies + (HZ * 10));
+              //spin_unlock_irqrestore(&jrd_voltage_lock, irq_flags);
+	}
 
 	return rc;
 }
@@ -1323,8 +2171,13 @@ static int msm_batt_cb_func(struct msm_rpc_client *client,
 static int __devinit msm_batt_probe(struct platform_device *pdev)
 {
 	int rc;
+	//unsigned long irq_flags;
 	struct msm_psy_batt_pdata *pdata = pdev->dev.platform_data;
-
+	ui_cali_flag =1; //defaut enable ui calibration func
+	track.ui_state = TRACK_BOOT;
+	track.ui_pre_state = TRACK_BOOT;
+	tracktime = current_kernel_time();
+	has_battery_lock = 0;  //there is no msm_battery_lock
 	if (pdev->id != -1) {
 		dev_err(&pdev->dev,
 			"%s: MSM chipsets Can only support one"
@@ -1422,8 +2275,19 @@ static int __devinit msm_batt_probe(struct platform_device *pdev)
 	msm_batt_info.early_suspend.resume = msm_batt_late_resume;
 	register_early_suspend(&msm_batt_info.early_suspend);
 #endif
+	mutex_lock(&jrd_update_lock);
 	msm_batt_update_psy_status();
-
+	mutex_unlock(&jrd_update_lock);
+	if (jrd_start_poll_voltage_timer == 0)
+       {
+	   jrd_start_poll_voltage_timer = 1;
+          mod_timer(&jrd_poll_voltage_timer, jiffies + (HZ * 10));
+	}
+	else
+	{
+	  del_timer(&jrd_poll_voltage_timer);
+	  mod_timer(&jrd_poll_voltage_timer, jiffies + (HZ * 10));
+	 }
 #else
 	power_supply_changed(&msm_psy_ac);
 #endif  /* CONFIG_BATTERY_MSM_FAKE */
@@ -1452,7 +2316,30 @@ static struct platform_driver msm_batt_driver = {
 		   .owner = THIS_MODULE,
 		   },
 };
+static void jrd_poll_voltage_work(struct work_struct *work)
+{
+	//printk(KERN_INFO "=====update voltage=== \n"); 
+	//unsigned long irq_flags;
+	mutex_lock(&jrd_update_lock);
+	msm_batt_update_psy_status();
+	mutex_unlock(&jrd_update_lock);
+	//DBG_LIMIT("BATT: in jrd_poll_voltage_work, liyuan\n");
+	jrd_start_poll_voltage_timer = 1;
 
+	mod_timer(&jrd_poll_voltage_timer, jiffies + (HZ * 10));
+}
+DECLARE_WORK(jrd_poll_voltage_workqueue, jrd_poll_voltage_work);
+
+static void jrd_poll_voltage_timer_expire(unsigned long data)
+{
+	//unsigned long irq_flags;
+
+	//spin_lock_irqsave(&jrd_voltage_lock, irq_flags);
+
+	schedule_work(&jrd_poll_voltage_workqueue);
+
+	//spin_unlock_irqrestore(&jrd_voltage_lock, irq_flags);
+}
 static int __devinit msm_batt_init_rpc(void)
 {
 	int rc;
@@ -1460,6 +2347,13 @@ static int __devinit msm_batt_init_rpc(void)
 #ifdef CONFIG_BATTERY_MSM_FAKE
 	pr_info("Faking MSM battery\n");
 #else
+	init_timer(&jrd_poll_voltage_timer);
+	jrd_poll_voltage_timer.function = jrd_poll_voltage_timer_expire;
+	jrd_poll_voltage_timer.data = 0;
+
+    	/* Initialize spinlock. */
+	//spin_lock_init(&jrd_voltage_lock);
+	mutex_init(&jrd_update_lock);
 
 	msm_batt_info.chg_ep =
 		msm_rpc_connect_compatible(CHG_RPC_PROG, CHG_RPC_VER_4_1, 0);
@@ -1563,10 +2457,12 @@ static int __init msm_batt_init(void)
 	pr_debug("%s: enter\n", __func__);
 
 	rc = msm_batt_init_rpc();
-
+	wake_lock_init(&msm_battery_lock, WAKE_LOCK_SUSPEND, "main");
 	if (rc < 0) {
 		pr_err("%s: FAIL: msm_batt_init_rpc.  rc=%d\n", __func__, rc);
 		msm_batt_cleanup();
+		del_timer(&jrd_poll_voltage_timer);
+		wake_lock_destroy(&msm_battery_lock);
 		return rc;
 	}
 
@@ -1579,7 +2475,9 @@ static int __init msm_batt_init(void)
 
 static void __exit msm_batt_exit(void)
 {
+	del_timer(&jrd_poll_voltage_timer);
 	platform_driver_unregister(&msm_batt_driver);
+	wake_lock_destroy(&msm_battery_lock);
 }
 
 module_init(msm_batt_init);

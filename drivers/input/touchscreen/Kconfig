@@ -803,7 +803,21 @@ config TOUCHSCREEN_CY8C_TS
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called cy8c_ts.
+	  
+config TOUCHSCREEN_FT5306_I2C
+       tristate "Cypress FT5306 based touchscreens"
+       depends on I2C
+       default y
+       help
+         Say Y here if you have a Cypress FT5306 based touchscreen.
+         TMA300 is a multi-touch screen which can report upto 10
+         touches at a time.
 
+         If unsure, say N.
+
+         To compile this driver as a module, choose M here: the
+         module will be called ft5306-i2c.
+         
 config TOUCHSCREEN_CYTTSP_I2C
        tristate "Cypress TTSP based touchscreens"
        depends on I2C

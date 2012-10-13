@@ -41,6 +41,8 @@
 #define ACDB_ID_HANDSET_MIC_ENDFIRE			0x2E
 #define ACDB_ID_I2S_TX					0x30
 #define ACDB_ID_HDMI					0x40
+#define ACDB_ID_HANDSET_SPKR_HAC			0x41
+#define ACDB_ID_HANDSET_MIC_SPKR			0x42
 #define ACDB_ID_FM_RX					0x4F
 /*Replace the max device ID,if any new device is added Specific to RTC only*/
 #define ACDB_ID_MAX                                 ACDB_ID_FM_RX

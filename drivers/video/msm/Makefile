@@ -5,6 +5,7 @@ obj-$(CONFIG_FB_BACKLIGHT) += msm_fb_bl.o
 
 # MDP
 obj-y += mdp.o
+obj-y += mddi_ry002z.o
 
 obj-$(CONFIG_DEBUG_FS) += mdp_debugfs.o
 

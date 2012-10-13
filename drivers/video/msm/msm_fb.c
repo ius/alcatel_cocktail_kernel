@@ -118,6 +118,37 @@ int msm_fb_debugfs_file_index;
 struct dentry *msm_fb_debugfs_root;
 struct dentry *msm_fb_debugfs_file[MSM_FB_MAX_DBGFS];
 
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+int msmfb_bootup = 0;
+
+static ssize_t msm_fb_bootup_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+
+	ret = snprintf(buf, 2, "%u\n", msmfb_bootup);
+
+	return ret;
+}
+
+static ssize_t msm_fb_bootup_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count){
+	ssize_t  ret =  -EINVAL;
+	unsigned long bootup;
+                
+	ret = strict_strtoul(buf, 10, &bootup);
+	if(!ret){
+		ret = count;
+		msmfb_bootup = (int)bootup;
+	}
+
+	return ret;
+}
+static struct device_attribute msmfb_bootup_attrs =
+        __ATTR(bootup, 0664, msm_fb_bootup_show, msm_fb_bootup_store);
+
+#endif
+
 DEFINE_MUTEX(msm_fb_notify_update_sem);
 void msmfb_no_update_notify_timer_cb(unsigned long data)
 {
@@ -384,6 +415,18 @@ static int msm_fb_probe(struct platform_device *pdev)
 
 	pdev_list[pdev_list_cnt++] = pdev;
 	msm_fb_create_sysfs(pdev);
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+	{
+	   struct msm_fb_panel_data *pdata =
+	(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+	   
+	   if (MDDI_PANEL == pdata->panel_info.type){
+		  int ret = sysfs_create_file(&mfd->fbi->dev->kobj, &msmfb_bootup_attrs.attr); 
+		  if (ret)
+			 dev_dbg(&pdev->dev, "Failed to create bootup in sysfs\n");
+		}
+	}
+#endif
 	return 0;
 }
 
@@ -396,6 +439,16 @@ static int msm_fb_remove(struct platform_device *pdev)
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 
 	msm_fb_remove_sysfs(pdev);
+#ifdef CONFIG_FIX_BOOTUP_BLINK
+	{
+		struct msm_fb_panel_data *pdata =
+	(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+	   
+		if (MDDI_PANEL == pdata->panel_info.type)   
+			//remove sys interface
+			sysfs_remove_file(&mfd->fbi->dev->kobj,&msmfb_bootup_attrs.attr); 
+	}
+#endif
 
 	pm_runtime_disable(mfd->fbi->dev);
 
@@ -704,35 +757,29 @@ static void msmfb_early_resume(struct early_suspend *h)
 {
 	struct msm_fb_data_type *mfd = container_of(h, struct msm_fb_data_type,
 						    early_suspend);
+//PR272492, for updating the last frame.
+	struct fb_info *fbi = mfd->fbi;
+
 	msm_fb_resume_sub(mfd);
+	if(mfd->panel_info.type == MDDI_PANEL)
+	{
+		mdp_dma_pan_update(fbi);
+		msleep(17);
+	}
+//PR272492
 }
 #endif
-
-static int unset_bl_level, bl_updated;
-static int bl_level_old;
 
 void msm_fb_set_backlight(struct msm_fb_data_type *mfd, __u32 bkl_lvl)
 {
 	struct msm_fb_panel_data *pdata;
 
-	if (!mfd->panel_power_on || !bl_updated) {
-		unset_bl_level = bkl_lvl;
-		return;
-	} else {
-		unset_bl_level = 0;
-	}
-
 	pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
 
 	if ((pdata) && (pdata->set_backlight)) {
 		down(&mfd->sem);
-		if (bl_level_old == bkl_lvl) {
-			up(&mfd->sem);
-			return;
-		}
 		mfd->bl_level = bkl_lvl;
 		pdata->set_backlight(mfd);
-		bl_level_old = mfd->bl_level;
 		up(&mfd->sem);
 	}
 }
@@ -786,7 +833,6 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 			mfd->op_enable = FALSE;
 			curr_pwr_state = mfd->panel_power_on;
 			mfd->panel_power_on = FALSE;
-			bl_updated = 0;
 
 			msleep(16);
 			ret = pdata->off(mfd->pdev);
@@ -1462,7 +1508,6 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 	struct mdp_dirty_region dirty;
 	struct mdp_dirty_region *dirtyPtr = NULL;
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
-	struct msm_fb_panel_data *pdata;
 
 	if (info->node != 0 || mfd->cont_splash_done)	/* primary */
 		if ((!mfd->op_enable) || (!mfd->panel_power_on))
@@ -1538,20 +1583,6 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 			     (var->activate == FB_ACTIVATE_VBL));
 	mdp_dma_pan_update(info);
 	up(&msm_fb_pan_sem);
-
-	if (unset_bl_level && !bl_updated) {
-		pdata = (struct msm_fb_panel_data *)mfd->pdev->
-			dev.platform_data;
-		if ((pdata) && (pdata->set_backlight)) {
-			down(&mfd->sem);
-			mfd->bl_level = unset_bl_level;
-			pdata->set_backlight(mfd);
-			bl_level_old = unset_bl_level;
-			up(&mfd->sem);
-			bl_updated = 1;
-		}
-	}
-
 	++mfd->panel_info.frame_count;
 	return 0;
 }
@@ -2623,7 +2654,6 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 	int	ret;
 	struct msmfb_overlay_data req;
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
-	struct msm_fb_panel_data *pdata;
 
 	if (mfd->overlay_play_enable == 0)	/* nothing to do */
 		return 0;
@@ -2654,19 +2684,6 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 	}
 
 	ret = mdp4_overlay_play(info, &req);
-
-	if (unset_bl_level && !bl_updated) {
-		pdata = (struct msm_fb_panel_data *)mfd->pdev->
-			dev.platform_data;
-		if ((pdata) && (pdata->set_backlight)) {
-			down(&mfd->sem);
-			mfd->bl_level = unset_bl_level;
-			pdata->set_backlight(mfd);
-			bl_level_old = unset_bl_level;
-			up(&mfd->sem);
-			bl_updated = 1;
-		}
-	}
 
 	return ret;
 }

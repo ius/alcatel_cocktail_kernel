@@ -1492,6 +1492,53 @@ static int __devinit android_probe(struct platform_device *pdev)
 	return 0;
 }
 
+/*****************************************************
+	fanxin add
+*****************************************************/
+static int is_support_functions(char *buff,struct android_usb_function *f)
+{
+	int i = 0;
+	strcpy(buff,f->name);
+	i = strlen(f->name);
+	buff[i] = ',';
+	return i;
+}
+static int android_usb_uevent(struct device *dev, struct kobj_uevent_env *env)
+{
+	struct android_dev *android_dev;
+	struct android_usb_function *f;
+	int len = 0;
+	int total = 0;
+	char * p_buff;
+	char *buff = kzalloc(PAGE_SIZE,GFP_KERNEL);
+	if(buff == NULL)
+		goto out1;
+	p_buff = buff;
+	android_dev = _android_dev;
+	if(dev->parent != NULL)
+		goto out;
+	dev = dev_get_drvdata(dev);
+	if(!dev)
+		goto out;
+	list_for_each_entry(f, &android_dev->enabled_functions, enabled_list){
+		len = is_support_functions(p_buff, f);
+		p_buff = p_buff + len + 1;
+		total = total + len + 1;
+	}
+	if(total>0)
+		buff[total - 1] = '\0';
+
+	if (add_uevent_var(env, "FUNCTION=%s", buff)){
+		kfree(buff);
+		goto out1;
+	}
+out:
+	kfree(buff);
+	return 0;
+out1:
+	return -ENOMEM;
+}
+
 static struct platform_driver android_platform_driver = {
 	.driver = { .name = "android_usb"},
 };
@@ -1523,6 +1570,7 @@ static int __init init(void)
 	}
 	_android_dev = dev;
 
+	android_class->dev_uevent = android_usb_uevent;
 	/* Override composite driver functions */
 	composite_driver.setup = android_setup;
 	composite_driver.disconnect = android_disconnect;

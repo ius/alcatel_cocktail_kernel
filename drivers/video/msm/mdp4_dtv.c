@@ -227,8 +227,15 @@ static int dtv_probe(struct platform_device *pdev)
 	mfd->panel_info = pdata->panel_info;
 	if (hdmi_prim_display)
 		mfd->fb_imgType = MSMFB_DEFAULT_TYPE;
-	else
-		mfd->fb_imgType = MDP_RGB_565;
+	else {
+		if(mfd->panel_info.bpp == 24)
+			mfd->fb_imgType = MDP_RGB_888;
+		else if(mfd->panel_info.bpp == 32)
+			mfd->fb_imgType = MDP_ARGB_8888;
+		else
+			mfd->fb_imgType = MDP_RGB_565;
+	}
+	pr_info("dtv_probe: mfd->panel_info.bpp=%d\n",mfd->panel_info.bpp);
 
 	fbi = mfd->fbi;
 	fbi->var.pixclock = mfd->panel_info.clk_rate;

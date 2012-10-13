@@ -642,6 +642,14 @@ config QFP_FUSE
 	  to the fuse block. Currently this is supported only
 	  on FSM targets.
 
+config TORCH_SGM3140
+	tristate "SGM3140 Flash and Torch driver"
+	default y
+	help
+	this is The SGM3140 is a current-regulated charge pump 
+	ideal for powering high brightness LEDs for camera 
+	flash applications.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"

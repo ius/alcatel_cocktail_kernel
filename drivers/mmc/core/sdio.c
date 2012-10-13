@@ -922,6 +922,9 @@ int mmc_attach_sdio(struct mmc_host *host)
 			goto remove_added;
 	}
 
+#ifdef CONFIG_BCMDHD
+	host->pm_flags |= MMC_PM_KEEP_POWER;
+#endif
 	mmc_claim_host(host);
 	return 0;
 

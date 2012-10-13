@@ -3314,14 +3314,21 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	sbi->s_inodes_per_block = blocksize / EXT4_INODE_SIZE(sb);
 	if (sbi->s_inodes_per_block == 0)
 		goto cantfind_ext4;
+//modify by cd_hwfu..round up the inode_table_per_group variable if it's not a integer.
+#if 0
 	sbi->s_itb_per_group = sbi->s_inodes_per_group /
 					sbi->s_inodes_per_block;
+#else
+	sbi->s_itb_per_group =DIV_ROUND_UP(sbi->s_inodes_per_group ,sbi->s_inodes_per_block);
+#endif
 	sbi->s_desc_per_block = blocksize / EXT4_DESC_SIZE(sb);
 	sbi->s_sbh = bh;
 	sbi->s_mount_state = le16_to_cpu(es->s_state);
 	sbi->s_addr_per_block_bits = ilog2(EXT4_ADDR_PER_BLOCK(sb));
 	sbi->s_desc_per_block_bits = ilog2(EXT4_DESC_PER_BLOCK(sb));
 
+	ext4_msg(sb,KERN_NOTICE,"inode per group:%ld,inode per block:%ld,inode table per group:%ld",
+		sbi->s_inodes_per_group,sbi->s_inodes_per_block,sbi->s_itb_per_group);
 	for (i = 0; i < 4; i++)
 		sbi->s_hash_seed[i] = le32_to_cpu(es->s_hash_seed[i]);
 	sbi->s_def_hash_version = es->s_def_hash_version;

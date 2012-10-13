@@ -38,6 +38,14 @@
 #define MODE_CMD	41
 #define RESET_ID	2
 
+//add by Zou Haiping for diag enable
+#define ENABLE  1
+#define DISABLE 0
+static unsigned short enable = ENABLE;
+module_param(enable, ushort, 0644);
+MODULE_PARM_DESC(enable, "diag cmd enable : 1=enabled / 0=disabled" );
+//end
+
 int diag_debug_buf_idx;
 unsigned char diag_debug_buf[1024];
 static unsigned int buf_tbl_size = 8; /*Number of entries in table of buffers */
@@ -1094,7 +1102,13 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 		}
 	}
 #endif
-		return packet_type;
+
+	//added by Zou Haiping for diag disable
+	if ( enable == DISABLE &&  !(cmd_code == 0x4B && subsys_id == 0x6F) ) {
+		return 0;
+	}
+		
+	return packet_type;
 }
 
 #ifdef CONFIG_DIAG_OVER_USB

@@ -35,6 +35,16 @@ config FB_MSM_TRIPLE_BUFFER
 	bool "Support for triple frame buffer"
 	default n
 
+config FIX_BOOTUP_BLINK
+	bool "fix blink from bootloader to kernel with MDDI interface"
+	depends on FB_MSM && FB_MSM_MDDI
+	default n
+
+config MDDI_HIMAX_24BIT_WORKROUND
+	bool "fix mddi himax controller hibernate bug"
+	depends on FB_MSM && FB_MSM_MDDI && FB_MSM_MDDI_RY002Z
+	default n
+
 choice
 	prompt "MDP HW version"
 	default FB_MSM_MDP22

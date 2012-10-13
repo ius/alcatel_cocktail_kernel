@@ -42,6 +42,18 @@ config OV5640
 	default n
 	---help---
 	Omni 5M YUV Sensor
+config OV5647
+        bool "Sensor OmniVision OV5647 (5M)"
+        depends on MSM_CAMERA
+        default y
+        ---help---
+          OmniVision 5M Sensor with AutoFocus
+config OV7690
+        bool "Sensor OmniVision OV7690 (0.3M)"
+        depends on MSM_CAMERA
+        default y
+        ---help---
+          OmniVision 0.3M YUV Sensor 
 config WEBCAM_OV7692_QRD
 	bool "Sensor OV7692 QRD(VGA YUV)"
 	depends on MSM_CAMERA && ARCH_MSM7X27A && !MSM_CAMERA_V4L2

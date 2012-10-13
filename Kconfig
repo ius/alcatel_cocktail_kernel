@@ -8,4 +8,8 @@ config SRCARCH
 	string
 	option env="SRCARCH"
 
+config KERNEL_PANIC_LOG
+	default y
+	bool "JRD KERNEL_PANIC_LOG"
+
 source "arch/$SRCARCH/Kconfig"

@@ -44,6 +44,11 @@
 #include <mach/msm_rtb.h>
 #include <asm/uaccess.h>
 
+//for save kernel panic info to /data/
+#ifdef CONFIG_KERNEL_PANIC_LOG
+extern void copy_to_dumpbuffer(char*);
+extern int dump_enabled(void);
+#endif
 /*
  * Architectures can override it:
  */
@@ -784,6 +789,10 @@ asmlinkage int printk(const char *fmt, ...)
 {
 	va_list args;
 	int r;
+#ifdef CONFIG_KERNEL_PANIC_LOG
+	static char buf[1024];
+	va_list args_1;
+#endif	
 #ifdef CONFIG_MSM_RTB
 	void *caller = __builtin_return_address(0);
 
@@ -801,6 +810,16 @@ asmlinkage int printk(const char *fmt, ...)
 	va_start(args, fmt);
 	r = vprintk(fmt, args);
 	va_end(args);
+//for save kernel panic info to /data/
+#ifdef CONFIG_KERNEL_PANIC_LOG
+	if ( dump_enabled()){
+                va_start(args_1, fmt);
+                vsnprintf(buf, sizeof(buf), fmt, args_1);
+                va_end(args_1);
+
+                copy_to_dumpbuffer(buf);
+        }
+#endif
 
 	return r;
 }

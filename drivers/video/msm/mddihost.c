@@ -384,9 +384,24 @@ boolean mddi_host_register_write_int
 
 }				/* mddi_host_register_write */
 
+void delay_ms(uint16 time_ms){
+	int time_ov = 0;
+	int delay_jiffies = (time_ms*HZ) / (1000);
+    
+	if (delay_jiffies <= 0){
+		mdelay(time_ms);
+	}
+	else{
+		time_ov = jiffies + delay_jiffies;
+		while(jiffies <= time_ov)
+			mdelay(10);
+	}
+}
+
 void mddi_wait(uint16 time_ms)
 {
-	mdelay(time_ms);
+	//mdelay(time_ms);
+	delay_ms(time_ms);
 }
 
 void mddi_client_lcd_vsync_detected(boolean detected)

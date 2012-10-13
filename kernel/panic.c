@@ -23,9 +23,21 @@
 #include <linux/init.h>
 #include <linux/nmi.h>
 #include <linux/dmi.h>
+#ifdef CONFIG_KERNEL_PANIC_LOG
+#include <linux/fs.h>
+#include <asm/uaccess.h>
+#endif
 
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
+
+//for save kernel panic info to /data
+#ifdef CONFIG_KERNEL_PANIC_LOG
+#define DUMP_BUFFER_SIZE	8192
+char dump_start = 0;
+char dump_buffer[DUMP_BUFFER_SIZE];
+int  dump_buffer_length = 0;
+#endif
 
 /* Machine specific panic information string */
 char *mach_panic_string;
@@ -55,6 +67,22 @@ static long no_blink(int state)
 long (*panic_blink)(int state);
 EXPORT_SYMBOL(panic_blink);
 
+
+//for save kernel panic info to /data/
+#ifdef CONFIG_KERNEL_PANIC_LOG
+int dump_enabled(void){
+	return dump_start;
+}
+
+void copy_to_dumpbuffer(char *buf){
+        if(dump_buffer_length<DUMP_BUFFER_SIZE){
+                int cnt=snprintf(dump_buffer+dump_buffer_length,
+					DUMP_BUFFER_SIZE-dump_buffer_length,"%s",buf);
+                dump_buffer_length+=cnt;
+        }
+}
+#endif
+
 /**
  *	panic - halt the system
  *	@fmt: The text string to print
@@ -69,6 +97,10 @@ NORET_TYPE void panic(const char * fmt, ...)
 	va_list args;
 	long i, i_next = 0;
 	int state = 0;
+#ifdef CONFIG_KERNEL_PANIC_LOG	
+	struct file *filep=NULL;
+	dump_start=1;
+#endif	
 
 	/*
 	 * It's possible to come here directly from a panic-assertion and
@@ -86,6 +118,15 @@ NORET_TYPE void panic(const char * fmt, ...)
 #ifdef CONFIG_DEBUG_BUGVERBOSE
 	dump_stack();
 #endif
+	//for save kernel panic info to /data/
+#ifdef CONFIG_KERNEL_PANIC_LOG
+	filep=filp_open("/data/local/kernel_panic",O_CREAT | O_RDWR|O_SYNC|O_TRUNC,0);
+	if(filep){
+		filep->f_op->write(filep,dump_buffer,dump_buffer_length,&filep->f_pos);
+		
+		filp_close(filep,NULL);
+	}
+#endif	
 
 	/*
 	 * If we have crashed and we have a crash kernel loaded let it handle

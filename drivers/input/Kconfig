@@ -25,6 +25,13 @@ config INPUT
 
 if INPUT
 
+config TCL_TESTBOARD
+	tristate "TCL testboard keypad"
+	depends on ARCH_MSM7X30
+	default n
+	help
+          Say Y here to enable the keyboard on TCL testboard for developer.
+
 config INPUT_FF_MEMLESS
 	tristate "Support for memoryless force-feedback devices"
 	help

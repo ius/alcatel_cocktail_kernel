@@ -343,12 +343,41 @@ void kernel_restart(char *cmd)
 }
 EXPORT_SYMBOL_GPL(kernel_restart);
 
+//wait for modem file system sync, Zou Haiping
+DECLARE_WAIT_QUEUE_HEAD(modem_sync_head);
+int sync_rq = 0;
+
+void wait_modem_sync(void)
+{
+    int rc=0;
+    DECLARE_WAITQUEUE(wait, current);
+    
+    printk(KERN_DEBUG "Wait for modem file system syncing...!\n");
+
+    add_wait_queue(&modem_sync_head, &wait);
+    
+    if (sync_rq > 0)
+    {
+    		rc = wait_event_timeout(modem_sync_head, sync_rq == 0 , 5*HZ);
+		if (rc==0)
+		{
+			printk(KERN_ERR "Wait for modem sync timeout!\n");
+			return;
+		}
+		printk(KERN_DEBUG "Modem sync completed!\n");
+    }
+    
+    return;
+}
+
 static void kernel_shutdown_prepare(enum system_states state)
 {
 	blocking_notifier_call_chain(&reboot_notifier_list,
 		(state == SYSTEM_HALT)?SYS_HALT:SYS_POWER_OFF, NULL);
 	system_state = state;
 	usermodehelper_disable();
+	//we must finish sync process before device shutdown, Zou Haiping
+	wait_modem_sync();
 	device_shutdown();
 }
 /**

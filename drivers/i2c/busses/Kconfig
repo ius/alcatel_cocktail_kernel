@@ -368,6 +368,12 @@ config I2C_GPIO
 	  This is a very simple bitbanging I2C driver utilizing the
 	  arch-neutral GPIO API to control the SCL and SDA lines.
 
+config I2C_GPIO_COCKTAIL_GPIO97
+        tristate "GPIO-based bitbanging I2C, use gpio 97"
+        depends on I2C_GPIO
+        help
+          For Qualcomm reference design, gpio97 used for MDDI, so if select this, will disable gpio97 for other used.
+
 config I2C_HIGHLANDER
 	tristate "Highlander FPGA SMBus interface"
 	depends on SH_HIGHLANDER

@@ -244,6 +244,12 @@ config MSM_BT_POWER
 	  Provides a parameter to switch on/off power from PMIC
 	  to Bluetooth device.
 
+config BTHID
+	tristate "BRCM Bluetooth HID"
+	depends on BT_HIDP
+	help
+	  BRCM Bluetooth hid driver.
+
 config BT_ATH3K
 	tristate "Atheros firmware download driver"
 	depends on BT_HCIBTUSB

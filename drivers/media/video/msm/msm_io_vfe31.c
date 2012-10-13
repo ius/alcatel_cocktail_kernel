@@ -120,12 +120,20 @@ static uint32_t vpe_clk_rate;
 static uint32_t jpeg_clk_rate;
 
 static struct regulator_bulk_data regs[] = {
-	{ .supply = "gp2",  .min_uV = 2600000, .max_uV = 2600000 },
-	{ .supply = "lvsw1" },
-	{ .supply = "fs_vfe" },
-	/* sn12m0pz regulators */
-	{ .supply = "gp6",  .min_uV = 3050000, .max_uV = 3100000 },
-	{ .supply = "gp16", .min_uV = 1200000, .max_uV = 1200000 },
+#if 0
+        { .supply = "lvsw1" },
+        { .supply = "gp2",  .min_uV = 2800000, .max_uV = 2800000 },
+        {.supply = "wlan", .min_uV = 1500000, .max_uV = 1500000},
+#endif
+/*Change the order of power supply to fix the problem of not good camera modules*/
+        {.supply = "wlan", .min_uV = 1500000, .max_uV = 1500000},
+        { .supply = "lvsw1" },
+        { .supply = "gp2",  .min_uV = 2800000, .max_uV = 2800000 },
+        {.supply = "wlan2",.min_uV = 2500000,  .max_uV = 2500000},
+        { .supply = "fs_vfe" },
+         //sn12m0pz regulators 
+        { .supply = "gp6",  .min_uV = 3050000, .max_uV = 3100000 },
+        { .supply = "gp16", .min_uV = 1200000, .max_uV = 1200000 },
 };
 
 static int reg_count;

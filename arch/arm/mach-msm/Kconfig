@@ -438,6 +438,14 @@ config MACH_MSM7627A_QRD1
         help
           Support for the Qualcomm MSM7627A Refrence Design.
 
+config MACH_MSM7X30_COCKTAIL
+       depends on ARCH_MSM7X30
+       depends on !MSM_STACKED_MEMORY
+       default y
+       bool "MSM7x30 Cocktail"
+       help
+          Support for the Qualcomm MSM7x30 COCKTAIL eval board.
+
 config MACH_MSM7X30_SURF
        depends on ARCH_MSM7X30
        depends on !MSM_STACKED_MEMORY
@@ -1298,6 +1306,28 @@ config MSM_RPCSERVER_HANDSET
 	help
 	  Support for receiving handset events like headset detect,
 	  headset switch and clamshell state.
+
+config MSM_IGNORE_END_KEY
+        depends on MSM_RPCSERVER_HANDSET
+        default y
+        bool "Ignore power button's end key event"
+        help
+          Disable power button report end key event,
+          and change it to a power key event.
+
+config MSM_IGNORE_MEDIA_KEY
+	depends on MSM_RPCSERVER_HANDSET
+	default n
+	bool "Ignore headset media key event"
+	help
+	  Ignore headset media key event.
+
+config MSM_FIX_MEDIA_KEY
+	depends on MSM_RPCSERVER_HANDSET
+	default n
+	bool "Fix hs input hardware issue"
+	help
+	   Fix hs input hardware issue
 
 config MSM_RMT_STORAGE_CLIENT
 	depends on (ARCH_MSM && MSM_ONCRPCROUTER)

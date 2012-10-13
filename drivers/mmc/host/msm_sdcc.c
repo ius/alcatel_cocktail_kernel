@@ -53,7 +53,14 @@
 #include <mach/msm_iomap.h>
 #include <mach/clk.h>
 #include <mach/dma.h>
+#include <mach/htc_pwrsink.h>
 #include <mach/sdio_al.h>
+/***********
+fxadd
+***********/
+#include <linux/mfd/pmic8058.h>
+#include <linux/gpio.h>
+#include <mach/gpio.h>
 
 #include "msm_sdcc.h"
 #include "msm_sdcc_dml.h"
@@ -68,6 +75,16 @@
 #define SPS_SDCC_CONSUMER_PIPE_INDEX	2
 #define SPS_CONS_PERIPHERAL		0
 #define SPS_PROD_PERIPHERAL		1
+/**********
+fx add
+**********/
+struct pm8xxx_gpio_init_info {
+	unsigned			gpio;
+	struct pm_gpio			config;
+};
+
+#define PMIC_GPIO_SDC4_EN_N	18  /* PMIC GPIO Number 19 */
+#define PM8058_GPIO_PM_TO_SYS(pm_gpio)     (pm_gpio + NR_GPIO_IRQS)
 
 #if defined(CONFIG_DEBUG_FS)
 static void msmsdcc_dbg_createhost(struct msmsdcc_host *);
@@ -332,6 +349,9 @@ msmsdcc_request_end(struct msmsdcc_host *host, struct mmc_request *mrq)
 	int retval = 0;
 
 	BUG_ON(host->curr.data);
+
+	host->curr.mrq = NULL;
+	host->curr.cmd = NULL;
 
 	del_timer(&host->req_tout_timer);
 
@@ -1023,7 +1043,11 @@ msmsdcc_start_command_deferred(struct msmsdcc_host *host,
 		writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG) &
 				~MCI_CDR_EN), host->base + MCI_DLL_CONFIG);
 
-	if ((cmd->flags & MMC_RSP_R1B) == MMC_RSP_R1B) {
+	/* in case, some emmc won't go to sleep if we stop polling the busy pin
+	   or toggling clock pin, wait for busy go high for command 5 sleep/
+	   awake as well */ 
+	//if ((host->prog_scan && (cmd->opcode == 12)) || (cmd->opcode == 5 && host->mmc->index != 1)) {
+	if (((cmd->flags & MMC_RSP_R1B) == MMC_RSP_R1B) || (cmd->opcode == 5 && host->mmc->index != 1)) {
 		*c |= MCI_CPSM_PROGENA;
 		host->prog_enable = 1;
 	}
@@ -1056,6 +1080,8 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data,
 	host->curr.data_xfered = 0;
 	host->curr.got_dataend = 0;
 	host->curr.got_auto_prog_done = 0;
+
+	memset(&host->pio, 0, sizeof(host->pio));
 
 	datactrl = MCI_DPSM_ENABLE | (data->blksz << 4);
 
@@ -1091,6 +1117,7 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data,
 
 	/* Is data transfer in PIO mode required? */
 	if (!(datactrl & MCI_DPSM_DMAENABLE)) {
+
 		if (data->flags & MMC_DATA_READ) {
 			pio_irqmask = MCI_RXFIFOHALFFULLMASK;
 			if (host->curr.xfer_remain < MCI_FIFOSIZE)
@@ -2451,6 +2478,12 @@ msmsdcc_cfg_sdio_wakeup(struct msmsdcc_host *host, bool enable_wakeup_irq)
 
 	if (enable_wakeup_irq) {
 		if (!host->plat->sdiowakeup_irq) {
+//#ifdef CONFIG_BCMDHD
+#if 0
+			if(mmc->card->cis.device == 0x4330) {
+				writel_relaxed(0, host->base + MMCIMASK0);			
+			}else{
+#endif
 			/*
 			 * When there is no gpio line that can be configured
 			 * as wakeup interrupt handle it by configuring
@@ -2464,6 +2497,9 @@ msmsdcc_cfg_sdio_wakeup(struct msmsdcc_host *host, bool enable_wakeup_irq)
 					mmc_dev(mmc), SDC_DAT1_ENWAKE);
 			/* configure sdcc core interrupt as wakeup interrupt */
 			msmsdcc_enable_irq_wake(host);
+//#ifdef CONFIG_BCMDHD
+//			}
+//#endif
 		} else {
 			/* Let gpio line handle wakeup interrupt */
 			writel_relaxed(0, host->base + MMCIMASK0);
@@ -2566,10 +2602,17 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 				pr_err("%s: failed to set clk rate %u\n",
 						mmc_hostname(mmc), clock);
 			host->clk_rate = clock;
-			host->reg_write_delay =
-				(1 + ((3 * USEC_PER_SEC) /
-				      (host->clk_rate ? host->clk_rate :
-				       msmsdcc_get_min_sup_clk_rate(host))));
+			if(mmc->index == 2){
+				host->reg_write_delay =
+					(10 + ((3 * USEC_PER_SEC) /
+				     	 (host->clk_rate ? host->clk_rate :
+				       		msmsdcc_get_min_sup_clk_rate(host))));
+			}else{
+				host->reg_write_delay =
+					(1 + ((3 * USEC_PER_SEC) /
+				     	 (host->clk_rate ? host->clk_rate :
+				       		msmsdcc_get_min_sup_clk_rate(host))));
+			}
 		}
 		/*
 		 * give atleast 2 MCLK cycles delay for clocks
@@ -3091,8 +3134,9 @@ static int msmsdcc_config_cm_sdc4_dll_phase(struct msmsdcc_host *host,
 						u8 phase)
 {
 	int rc = 0;
-	u8 grey_coded_phase_table[] = {0x0, 0x1, 0x3, 0x2, 0x6, 0x7, 0x5, 0x4,
-					0xC, 0xD, 0xF, 0xE, 0xA, 0xB, 0x9,
+	u8 grey_coded_phase_table[] = {0x0, 0x1, 0x3, 0x2, 0x6,
+					0x7, 0x5, 0x4, 0xC, 0xD, 
+					0xF, 0xE, 0xA, 0xB, 0x9,
 					0x8};
 	unsigned long flags;
 	u32 config;
@@ -3378,8 +3422,18 @@ msmsdcc_check_status(unsigned long data)
 	unsigned int status;
 
 	if (host->plat->status || host->plat->status_gpio) {
-		if (host->plat->status)
+		if (host->plat->status){
+			mdelay(2);
 			status = host->plat->status(mmc_dev(host->mmc));
+			if(host->pdev_id == 4){
+				if(status == 1)
+                       		gpio_set_value_cansleep(
+						PM8058_GPIO_PM_TO_SYS(PMIC_GPIO_SDC4_EN_N), 0);
+				else if(status == 0)
+					gpio_set_value_cansleep(
+						PM8058_GPIO_PM_TO_SYS(PMIC_GPIO_SDC4_EN_N), 1);
+			}
+		}
 		else
 			status = msmsdcc_slot_status(host);
 
@@ -4396,9 +4450,15 @@ msmsdcc_probe(struct platform_device *pdev)
 	 * Set the register write delay according to min. clock frequency
 	 * supported and update later when the host->clk_rate changes.
 	 */
-	host->reg_write_delay =
-		(1 + ((3 * USEC_PER_SEC) /
-		      msmsdcc_get_min_sup_clk_rate(host)));
+	 if(host->mmc->index == 2){
+		host->reg_write_delay =
+			(10 + ((3 * USEC_PER_SEC) /
+		      	msmsdcc_get_min_sup_clk_rate(host)));
+	 }else{
+		host->reg_write_delay =
+			(1 + ((3 * USEC_PER_SEC) /
+		      	msmsdcc_get_min_sup_clk_rate(host)));
+	 }		  
 
 	host->clks_on = 1;
 	/* Apply Hard reset to SDCC to put it in power on default state */
@@ -4549,7 +4609,6 @@ msmsdcc_probe(struct platform_device *pdev)
 
 		host->eject = !host->oldstat;
 	}
-
 	if (plat->status_irq) {
 		ret = request_threaded_irq(plat->status_irq, NULL,
 				  msmsdcc_platform_status_irq,
@@ -4562,7 +4621,18 @@ msmsdcc_probe(struct platform_device *pdev)
 			goto sdiowakeup_irq_free;
 		}
 	} else if (plat->register_status_notify) {
-		plat->register_status_notify(msmsdcc_status_notify_cb, host);
+		plat->register_status_notify(msmsdcc_status_notify_cb, host);				
+#ifdef CONFIG_BCMDHD
+		/*
+		 *For broadcom WiFi device, we should ignore pm_notify.
+		 *Whether the SDIO device is nonremovable or not,the 
+		 *mmc_recan must be ignored when the SDIO resume,
+		 *otherwise the wifi will not work or the system can 
+		 *not resume after suspending.
+		 *Also the core.c will not be patched again.
+		 */
+		mmc->pm_flags |= MMC_PM_IGNORE_PM_NOTIFY;
+#endif
 	} else if (!plat->status)
 		pr_err("%s: No card detect facilities available\n",
 		       mmc_hostname(mmc));
@@ -4898,10 +4968,23 @@ msmsdcc_runtime_suspend(struct device *dev)
 		 */
 		pm_runtime_get_noresume(dev);
 		/* If there is pending detect work abort runtime suspend */
-		if (unlikely(work_busy(&mmc->detect.work)))
+		if (unlikely(work_busy(&mmc->detect.work))){
 			rc = -EAGAIN;
-		else
+		}else{
+#ifdef CONFIG_BCMDHD
+		/*For Broadcom SDIO device, skip mmc_suspend_host*/
+		if(!mmc->card ||!(mmc->card && mmc_card_sdio(mmc->card))){
+#endif			
 			rc = mmc_suspend_host(mmc);
+#ifdef CONFIG_BCMDHD			
+		}else{
+			if(mmc->card && host->clks_on){
+				msmsdcc_setup_clocks(host, false);
+				host->clks_on = 0;
+			}
+		}
+#endif
+		}
 		pm_runtime_put_noidle(dev);
 
 		if (!rc) {
@@ -4924,6 +5007,13 @@ msmsdcc_runtime_suspend(struct device *dev)
 				mmc_set_ios(mmc);
 				mmc_host_clk_release(mmc);
 			}
+#if 0 //def CONFIG_BCMDHD
+			if (mmc->card && mmc_card_sdio(mmc->card)) {
+				mmc->ios.clock = 0;
+				mmc->ops->set_ios(host->mmc, &host->mmc->ios);
+				printk(KERN_ERR "%s:BCM4330 Wifi turn off clk succeed\n",__func__);
+			}
+#endif
 		}
 		host->sdcc_suspending = 0;
 		mmc->suspend_task = NULL;
@@ -4954,6 +5044,10 @@ msmsdcc_runtime_resume(struct device *dev)
 			mmc_host_clk_release(mmc);
 		}
 
+#ifdef CONFIG_BCMDHD
+		/*For Broadcom SDIO device, skip mmc_resume_host*/
+		if(!mmc->card ||!(mmc->card && mmc_card_sdio(mmc->card)))
+#endif
 		mmc_resume_host(mmc);
 
 		/*
@@ -4961,8 +5055,16 @@ msmsdcc_runtime_resume(struct device *dev)
 		 * resume handler.
 		 */
 		spin_lock_irqsave(&host->lock, flags);
+	#ifdef CONFIG_BCMDHD /*This flag can not be cleared*/
+		if(mmc->card && mmc_card_sdio(mmc->card)){
+			if(mmc_card_wake_sdio_irq(mmc))
+				mmc->pm_flags &= ~MMC_PM_WAKE_SDIO_IRQ;
+		}else{
+	#endif
 		mmc->pm_flags = 0;
-		host->sdcc_suspended = false;
+	#ifdef CONFIG_BCMDHD
+		}
+	#endif
 		spin_unlock_irqrestore(&host->lock, flags);
 
 		/*

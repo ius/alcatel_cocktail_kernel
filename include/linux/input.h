@@ -438,6 +438,9 @@ struct input_keymap_entry {
 #define KEY_WIMAX		246
 #define KEY_RFKILL		247	/* Key that controls all radios */
 
+/* PR278404--fred.wang--Use this key to print screen with volume down */
+#define KEY_SCREEN_PRINTABLE 248
+
 /* Code 255 is reserved for special needs of AT keyboard driver */
 
 #define BTN_MISC		0x100
